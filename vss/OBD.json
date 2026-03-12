@@ -1,0 +1,58 @@
+{
+  "Vehicle": {
+    "children": {
+      "OBD": {
+        "children": {
+          "CoolantTemperature": {
+            "datatype": "float",
+            "description": "PID 05 - Coolant temperature",
+            "type": "sensor",
+            "unit": "celsius",
+            "uuid": "824892cdc72d5f92a38ef3136576edc8"
+          },
+          "EngineSpeed": {
+            "datatype": "float",
+            "description": "PID 0C - Engine speed measured as rotations per minute",
+            "type": "sensor",
+            "unit": "rpm",
+            "uuid": "b682eea93b3e5874ab3b52e95a1fad37"
+          },
+          "VehicleSpeed": {
+            "datatype": "float",
+            "description": "PID 0D - Vehicle speed",
+            "type": "sensor",
+            "unit": "km/h",
+            "uuid": "91ed0bb43eb054759813cd784b071764"
+          },
+          "ThrottlePosition": {
+            "datatype": "float",
+            "description": "PID 11 - Throttle position - 0 = closed throttle, 100 = open throttle",
+            "type": "sensor",
+            "unit": "percent",
+            "uuid": "ec1d372020205bb4a846a014b33801e1"
+          },
+          "ThrottlePositionB": {
+            "datatype": "float",
+            "description": "PID 47 - Absolute throttle position B",
+            "type": "sensor",
+            "unit": "percent",
+            "uuid": "701712a565ed5bf8b6630487a7152c87"
+          },
+          "ThrottlePositionC": {
+            "datatype": "float",
+            "description": "PID 48 - Absolute throttle position C",
+            "type": "sensor",
+            "unit": "percent",
+            "uuid": "06f162dc00a85f628f9d5d1bc952665c"
+          }
+        },
+        "description": "OBD data.",
+        "type": "branch",
+        "uuid": "7ad7c512ed5d52c8b31944d2d47a4bc3"
+      }
+    },
+    "description": "High-level vehicle data.",
+    "type": "branch",
+    "uuid": "ccc825f94139544dbb5f4bfd033bece6"
+  }
+}

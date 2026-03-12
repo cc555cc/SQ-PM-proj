@@ -1,0 +1,25 @@
+{
+  "policyId": "org.eclipse.kuksa:policy",
+  "features": {
+    "VehicleSpeed": {
+      "properties": {
+        "value": 0
+      }
+    },
+    "EngineSpeed": {
+      "properties": {
+        "value": 0
+      }
+    },
+    "ThrottlePosition": {
+      "properties": {
+        "value": 0
+      }
+    },
+    "CoolantTemperature": {
+      "properties": {
+        "value": 0
+      }
+    }
+  }
+}

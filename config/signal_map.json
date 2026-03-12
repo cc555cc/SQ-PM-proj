@@ -1,0 +1,6 @@
+{
+  "Vehicle.OBD.VehicleSpeed": "VehicleSpeed",
+  "Vehicle.OBD.EngineSpeed": "EngineSpeed",
+  "Vehicle.OBD.ThrottlePosition": "ThrottlePosition",
+  "Vehicle.OBD.CoolantTemperature": "CoolantTemperature"
+}
