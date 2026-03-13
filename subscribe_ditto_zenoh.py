@@ -14,6 +14,9 @@
 #6. send the feature updates to Ditto using HTTP PUT requests to the appropriate feature endpoints
 #7. handle any errors that occur during the process and print appropriate error messages
 
+#integration 2: zenoh
+#this script now subscribe to vehicle data from zenoh instead of kuksa
+
 
 import os
 import time
