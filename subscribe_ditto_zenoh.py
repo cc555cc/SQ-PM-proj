@@ -17,32 +17,25 @@
 #integration 2: zenoh
 #this script now subscribe to vehicle data from zenoh instead of kuksa
 
+#tasks for integration 2:
+#1. connect to Zenoh
+#2. subscribe to the key prefix where the vehicle signals are published in Zenoh
+#3. decode incoming payload
+#4. convert payload to Ditto feature update format
+#5. updates Ditto via HTTP PUT requests
 
 import os
 import time
 import json
-from pathlib import Path
 
 import requests
 from requests import HTTPError
 
-KUKSA_IMPORT_ERROR = None
+from connect_kuksa_zenoh import connect_to_zenoh
 
-try:
-    from kuksa_client.grpc import VSSClient
-except Exception as exc:
-    VSSClient = None
-    KUKSA_IMPORT_ERROR = exc
-
-# get configuration from environment variables
-BASE_DIR = Path(__file__).resolve().parent
-SIGNAL_MAP_PATH = Path(
-    os.getenv("SIGNAL_MAP_PATH", BASE_DIR / "config" / "signal_map.json") 
-) #default to config/signal_map.json in the same directory as this script
-
-#kuksa env
-KUKSA_HOST = os.getenv("KUKSA_HOST", "localhost")
-KUKSA_PORT = int(os.getenv("KUKSA_PORT", "55555"))
+#zenoh env
+ZENOH_PEER = os.getenv("ZENOH_PEER", "tcp/localhost:7447")
+ZENOH_SUBSCRIBE = os.getenv("ZENOH_SUBSCRIBE", "vehicle/vehicle1/vss")
 
 #ditto env
 DITTO_URL = os.getenv("DITTO_URL", "http://localhost:8080")
@@ -51,69 +44,41 @@ DITTO_THING_ID = os.getenv("DITTO_THING_ID", "org.eclipse.kuksa:vehicle1")
 DITTO_PASSWORD = os.getenv("DITTO_PASSWORD", "ditto")
 REQUEST_TIMEOUT_SECONDS = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "5"))
 
-def load_signal_map():
-    try:
-        with SIGNAL_MAP_PATH.open("r", encoding="utf-8") as signal_map_file: #read the signal map file in the config directory
-            signal_map = json.load(signal_map_file) #load the JSON file into a dictionary
-    except FileNotFoundError as exc: #in case the file doesn't exist or path is wrong
-        raise FileNotFoundError(
-            f"Signal map file not found: {SIGNAL_MAP_PATH}"
-        ) from exc
+#create a zenoh session
+def create_zenoh_session():
+    session = connect_to_zenoh()
+    print("Connected to Zenoh successfully.")
+    
+    # Subscribe to the full subtree so every published vehicle signal is received.
+    subscriber = session.declare_subscriber(f"{ZENOH_SUBSCRIBE}/**")
+    print(f"Subscribed to Zenoh key: {ZENOH_SUBSCRIBE}/**")
 
-    #validate that the signal map is a dictionary of Kuksa path to Ditto feature name
-    if not isinstance(signal_map, dict):
-        raise ValueError(
-            f"Signal map must be a JSON object of Kuksa path to Ditto feature name: {SIGNAL_MAP_PATH}"
-        )
+    return session, subscriber
 
-    return signal_map
+#decode zenoh payload and build feature updates for ditto
+def build_feature_updates(payload):
+    #decode first
+    # The zenoh payload object may expose bytes slightly differently across versions.
+    if hasattr(payload.payload, "to_bytes"):
+        raw_payload = payload.payload.to_bytes().decode("utf-8")
+    else:
+        raw_payload = bytes(payload.payload).decode("utf-8")
+    actual_payload = json.loads(raw_payload)
 
-#read signal from map and extract the value and store in a dictionary to be sent to ditto
-def extract_signal_values(updates):
-    values = {}
+    # Match the field names produced by connect_kuksa_zenoh.py.
+    feature_name = actual_payload.get("feature")
+    value = actual_payload.get("value")
 
-    #loop through the updates from kuksa
-    for signal, datapoint in updates.items():
-        values[signal] = getattr(datapoint, "value", datapoint) #extract the value from datapoint with "value" attribute
+    #build feature
+    feature_updates = {
+        feature_name: {
+            "properties": {
+                "value": value
+            }
+        }
+    }
 
-    return values
-
-#confirm signal path exist in kuksa before subscrition
-def validate_signal_paths(client, signal_map):
-    missing_signals = []
-
-    #check each signal path in kuksa
-    for signal in signal_map.keys():
-        try:
-            client.get_metadata([signal]) #get metatdata for the signal path
-        except Exception:
-            missing_signals.append(signal)
-
-    #signal paths missing
-    if missing_signals:
-        raise ValueError(
-            "These signals were not found in Kuksa: "
-            + ", ".join(missing_signals)
-        )
-
-#connect to kuksa
-def connect_to_kuksa():
-    #create new client instance
-    new_client = VSSClient(KUKSA_HOST, KUKSA_PORT)
-
-    return VSSClient(KUKSA_HOST, KUKSA_PORT)
-
-#for each update of signal values, build a dictionary of feature updates
-def build_feature_updates(values, signal_map):
-    feature_updates = {}
-
-    #loop through signal values and map to feature names using the signal map
-    for signal, value in values.items():
-        #build the payload for the feature update
-        feature_name = signal_map[signal]
-        feature_updates[feature_name] = {"properties": {"value": value}}
-
-    return feature_updates
+    return feature_updates    
 
 #send payload to ditto
 def update_ditto(feature_updates):
@@ -149,36 +114,24 @@ def update_ditto(feature_updates):
         print(f"Ditto [{feature_name}]: {response.status_code}")
 
 def main():
-    #variables
-    signal_map = load_signal_map()
-    subscribed_signals = list(signal_map.keys())
-
-    #confirm there are subscribed signal before listening to updates
-    if not subscribed_signals:
-        raise ValueError(
-            f"No signals configured in {SIGNAL_MAP_PATH}. Add signal mappings first."
-        )
-
-    #print startup configuration for confirmation
-    print(
-        f"Starting bridge: Kuksa={KUKSA_HOST}:{KUKSA_PORT}, "
-        f"Ditto={DITTO_URL}, Thing={DITTO_THING_ID}"
-    )
-
-    #main loop
     while True:
         try:
-            with connect_to_kuksa() as client:
-                validate_signal_paths(client, signal_map)
-                for updates in client.subscribe_current_values(subscribed_signals):
-                    signal_values = extract_signal_values(updates)
-                    feature_updates = build_feature_updates(signal_values, signal_map)
-                    update_ditto(feature_updates)
-        except (ImportError, ValueError) as e:
-            raise RuntimeError(f"Startup error: {e}") from e
+            session, subscriber = create_zenoh_session()
+
+            try:
+                # Iterate over the declared subscriber, not the raw session.
+                for payload in subscriber:
+                    features_updates = build_feature_updates(payload)
+                    update_ditto(features_updates)
+            finally:
+                # Clean shutdown keeps reconnect loops from leaking subscriber/session handles.
+                subscriber.undeclare()
+                session.close()
         except Exception as e:
-            print("Error at kuksa connection: ", e)
+            print("Error in Zenoh-Ditto bridge:", e)
             time.sleep(1)
+
+    return None
 
 if __name__ == "__main__":
     main()
