@@ -1,0 +1,22 @@
+{
+  "VehicleSpeed": {
+    "unit": "km/h",
+    "min": 0,
+    "max": 180
+  },
+  "EngineSpeed": {
+    "unit": "rpm",
+    "min": 0,
+    "max": 7000
+  },
+  "ThrottlePosition": {
+    "unit": "%",
+    "min": 0,
+    "max": 100
+  },
+  "CoolantTemperature": {
+    "unit": "C",
+    "min": 0,
+    "max": 110
+  }
+}
