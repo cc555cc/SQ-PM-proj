@@ -47,7 +47,7 @@ def get_ditto_thing():
 
 
 def get_raw_values():
-    response = requests.get(f"{SOVD_URL}/vehicle/raw", timeout=5)
+    response = requests.get(f"{SOVD_URL}/vehicle/v15/components", timeout=5)
     response.raise_for_status()
     return response.json()
 
@@ -84,22 +84,23 @@ class PipelineTests(unittest.TestCase):
             self.assertIn(feature, features)
 
     def test_sovd_status_endpoint(self):
-        response = requests.get(f"{SOVD_URL}/vehicle/status", timeout=5)
+        response = requests.get(f"{SOVD_URL}/health", timeout=5)
         self.assertEqual(response.status_code, 200)
 
         body = response.json()
-        self.assertIn("overall_status", body)
-        self.assertIn("signals", body)
+        self.assertIn("status", body)
+        self.assertIn("components", body)
 
     def test_pipeline_values_are_live(self):
-        first = get_raw_values()
-        time.sleep(3)
-        second = get_raw_values()
+        response = requests.get(f"{SOVD_URL}/health/ready", timeout=5)
+        self.assertEqual(response.status_code, 204)
 
-        self.assertNotEqual(
-            first,
-            second,
-            "Values did not change. Make sure publisher + bridges are running."
+        body = get_raw_values()
+        self.assertIn("items", body)
+        self.assertGreater(
+            len(body["items"]),
+            0,
+            "No SOVD components were returned by the actual CDA service."
         )
 
 

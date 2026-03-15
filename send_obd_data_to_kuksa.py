@@ -62,6 +62,7 @@ async def main():
                     "CoolantTemperature": values[SIGNALS["CoolantTemperature"]],
                 },
             )
+            print("-------------------------------------------------------------------------------------------------\n")
 
             await asyncio.sleep(PUBLISH_INTERVAL_SECONDS)
 

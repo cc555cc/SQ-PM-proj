@@ -1,15 +1,3 @@
-# This script uses FastAPI to expose simple Eclipse SOVD-style diagnostic
-# endpoints for the project pipeline. It reads the latest vehicle features
-# from the Ditto twin and returns either raw values or threshold-based status
-# summaries.
-#
-#steps:
-#1. Load environment variables and threshold rules from configuration.
-#2. Request the latest vehicle Thing data from Eclipse Ditto.
-#3. Extract the current feature values from the Ditto response.
-#4. Return raw signal values through the `/vehicle/raw` endpoint.
-#5. Return warning status summaries through the `/vehicle/status` endpoint.
-
 from fastapi import FastAPI, HTTPException
 import requests
 import os
@@ -19,96 +7,68 @@ from dotenv import load_dotenv
 #load envrionement variables and threshold rule
 load_dotenv()
 
-app = FastAPI()
+app = FastAPI(
+    title = "OpenSOVD Diagnostic API",
+    version = os.getenv("SOVD_API_VERSION","0.1.0"),
+    description = ("SOVD-style ditto backend API"),
+)
 
-#ditto
-DITTO_URL = os.getenv("DITTO_URL", "http://localhost:8080")
-DITTO_USERNAME = os.getenv("DITTO_USERNAME", "ditto")
-DITTO_PASSWORD = os.getenv("DITTO_PASSWORD", "ditto")
-THING_ID = os.getenv("DITTO_THING_ID", "org.eclipse.kuksa:vehicle1")
+#SOVD 
+SOVD_URL = os.getenv("SOVD_URL", "http://localhost:20002")
 REQUEST_TIMEOUT_SECONDS = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "5"))
 
-#read diagnostic threshold rules, load to python
-with open("config/thresholds.json", "r", encoding="utf-8") as f:
-    thresholds = json.load(f)
-
-#request the current vehicle Thing from Eclipse Ditto so the SOVD API can
-#use the latest twin data to build diagnostic responses
-def get_ditto_thing():
-    url = f"{DITTO_URL}/api/2/things/{THING_ID}"
+#connect to SOVD
+def get_sovd(path: str):
+    url = f"{SOVD_URL}{path}"
     try:
-        response = requests.get(
-            url,
-            auth=(DITTO_USERNAME, DITTO_PASSWORD),
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        )
+        response = requests.get(url, timeout = REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()
-        return response.json() #return response from ditto as parsed JSON data
+        return response.json()
     except requests.RequestException as e:
-        raise HTTPException(status_code=503, detail=f"Ditto unavailable: {e}")
-
-
-#extract only the feature property values from the Ditto Thing response and
-#store them in a simpler dictionary keyed by feature name
-def extract_feature_values(thing):
-    features = thing.get("features", {})
-    values = {}
-
-    #for each features, extra their value
-    for feature_name, feature_body in features.items():
-        values[feature_name] = (
-            feature_body.get("properties", {}).get("value")
-        )
-
-    return values
+        raise HTTPException(status_code = 503, detail = f"SOVD not available: {e}")
 
 #api
 @app.get("/")
 def root():
-    return {"message": "OpenSOVD Diagnostic API running"}
+    return {
+        "service": "OpenSOVD proxy API",
+        "implementation": "proxy over SOVD componenet",
+        "upstream_sovd_url": SOVD_URL,
+        "supported_endpoints": [
+            "/",
+            "/health/live",
+            "/health/ready",
+            "/vehicle/raw",
+            "/vehicle/status",
+        ],
+    }
 
+@app.get("/health/live")
+def health_live():
+    return{"status": "alive"}
+
+@app.get("/health/ready")
+def health_ready():
+    try:
+        get_sovd("/")
+        return{
+            "status": "ready",
+            "sovd_url": SOVD_URL,
+        }
+    except HTTPException as exc:
+        return{
+            "status": "not ready",
+            "detail": exc.detail,
+            "sovd_url": SOVD_URL,
+        }
 
 @app.get("/vehicle/raw")
 def vehicle_raw():
-    thing = get_ditto_thing()
-    return extract_feature_values(thing)
+    response = get_sovd("/vehicle/raw")
+    return response
 
 
 @app.get("/vehicle/status")
 def vehicle_status():
-    thing = get_ditto_thing()
-    values = extract_feature_values(thing)
-
-    alerts = []
-    signals = {}
-    overall_status = "normal"
-
-    for signal, value in values.items():
-        rule = thresholds.get(signal, {})
-        min_v = rule.get("min")
-        max_v = rule.get("max")
-        unit = rule.get("unit", "")
-
-        status = "normal"
-
-        if isinstance(value, (int, float)):
-            if min_v is not None and value < min_v:
-                status = "warning"
-            if max_v is not None and value > max_v:
-                status = "warning"
-
-        if status != "normal":
-            alerts.append(signal)
-            overall_status = "warning"
-
-        signals[signal] = {
-            "value": value,
-            "unit": unit,
-            "status": status
-        }
-
-    return {
-        "signals": signals,
-        "alerts": alerts,
-        "overall_status": overall_status
-    }
+    response = get_sovd("/vehicle/status")
+    return response.json()
