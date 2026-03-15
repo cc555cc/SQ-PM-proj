@@ -25,7 +25,7 @@ DITTO_URL = os.getenv("DITTO_URL", "http://localhost:8080")
 DITTO_USERNAME = os.getenv("DITTO_USERNAME", "ditto")
 DITTO_PASSWORD = os.getenv("DITTO_PASSWORD", "ditto")
 DITTO_THING_ID = os.getenv("DITTO_THING_ID", "org.eclipse.kuksa:vehicle1")
-SOVD_URL = os.getenv("SOVD_URL", "http://localhost:9000")
+SOVD_URL = os.getenv("SOVD_URL", "http://localhost:20002")
 
 REQUIRED_FEATURES = [
     "VehicleSpeed",

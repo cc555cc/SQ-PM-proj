@@ -13,5 +13,7 @@ docker run --name zenoh-router -p 7447:7447 -d eclipse/zenoh:latest
 SOVD:
 docker compose -f .\testcontainer\docker-compose.yml up -d --build
 
+python -m uvicorn diagnostics.sovd_api_server:app --host 0.0.0.0 --port 9001
+
 openDut:
 docker compose -f .\opendut-docker\docker-compose.yml up -d

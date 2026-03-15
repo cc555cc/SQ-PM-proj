@@ -43,28 +43,33 @@ async def main():
 
     print(f"Starting OBD publisher: Kuksa={KUKSA_HOST}:{KUKSA_PORT}")
 
-    async with VSSClient(KUKSA_HOST, KUKSA_PORT) as client:
-        while True:
-            values = generate_obd_values()
-            updates = {
-                signal: Datapoint(value)
-                for signal, value in values.items()
-            }
+    while True:
+        try:
+            async with VSSClient(KUKSA_HOST, KUKSA_PORT) as client:
+                while True:
+                    values = generate_obd_values()
+                    updates = {
+                        signal: Datapoint(value)
+                        for signal, value in values.items()
+                    }
 
-            await client.set_current_values(updates)
+                    await client.set_current_values(updates)
 
-            print(
-                "Published:",
-                {
-                    "VehicleSpeed": values[SIGNALS["VehicleSpeed"]],
-                    "EngineSpeed": values[SIGNALS["EngineSpeed"]],
-                    "ThrottlePosition": values[SIGNALS["ThrottlePosition"]],
-                    "CoolantTemperature": values[SIGNALS["CoolantTemperature"]],
-                },
-            )
-            print("-------------------------------------------------------------------------------------------------\n")
+                    print(
+                        "Published:",
+                        {
+                            "VehicleSpeed": values[SIGNALS["VehicleSpeed"]],
+                            "EngineSpeed": values[SIGNALS["EngineSpeed"]],
+                            "ThrottlePosition": values[SIGNALS["ThrottlePosition"]],
+                            "CoolantTemperature": values[SIGNALS["CoolantTemperature"]],
+                        },
+                    )
+                    print("-------------------------------------------------------------------------------------------------\n")
 
-            await asyncio.sleep(PUBLISH_INTERVAL_SECONDS)
+                    await asyncio.sleep(PUBLISH_INTERVAL_SECONDS)
+        except Exception as exc:
+            print(f"Kuksa not ready yet: {exc}")
+            await asyncio.sleep(2)
 
 
 if __name__ == "__main__":
