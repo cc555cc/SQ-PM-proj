@@ -1,19 +1,19 @@
 # SQ-PM-proj
 
-This repository is currently focused on one milestone: bridging live OBD data from Kuksa Databroker into Eclipse Ditto.
+This repository is currently focused on one milestone: bridging live OBD data from Kuksa Databroker into Eclipse Ditto using Eclipse Zenoh.
 
 ## Current Scope
 
-`connect_kuksa.py` does four things:
+`connect_kuksa_zenoh.py` and `subscribe_ditto_zenoh.py` work together to do four things:
 
-1. Connects to Kuksa Databroker over gRPC.
-2. Subscribes to configured OBD signals.
-3. Maps each Kuksa signal to a Ditto feature name.
-4. Updates the matching Ditto features.
+1. Connect to Kuksa Databroker over gRPC.
+2. Subscribe to configured OBD signals and route them through Zenoh.
+3. Map each Kuksa signal to a Ditto feature name.
+4. Update the matching Ditto features via the REST API.
 
 `send_obd_data_to_kuksa.py` is an optional local test producer. It publishes random OBD values into Kuksa so the bridge has live data to forward to Ditto.
 
-The active Kuksa to Ditto mapping lives in [config/signal_map.json](/abs/path/c:/Users/Carson/OneDrive/Desktop/Proj%20Management/SQ-PM-proj/config/signal_map.json).
+The active Kuksa to Ditto mapping lives in [config/signal_map.json](config/signal_map.json).
 
 ## Expected Signals
 
@@ -36,6 +36,7 @@ These map to Ditto feature IDs:
 - Python 3.13 recommended
 - A reachable Kuksa Databroker
 - A reachable Eclipse Ditto instance
+- A running Eclipse Zenoh router/broker
 - A Ditto Thing that matches the configured Thing ID and features
 
 ## Python Setup
@@ -51,7 +52,7 @@ python -m pip install requests kuksa-client
 
 ## Environment
 
-Default runtime values in [connect_kuksa.py](/abs/path/c:/Users/Carson/OneDrive/Desktop/Proj%20Management/SQ-PM-proj/connect_kuksa.py):
+Default runtime values in [connect_kuksa_zenoh.py](connect_kuksa_zenoh.py):
 
 - `KUKSA_HOST=localhost`
 - `KUKSA_PORT=55555`
@@ -71,7 +72,7 @@ $env:DITTO_THING_ID="org.eclipse.kuksa:vehicle1"
 
 ## Ditto Bootstrap
 
-Use [config/ditto_thing.json](/abs/path/c:/Users/Carson/OneDrive/Desktop/Proj%20Management/SQ-PM-proj/config/ditto_thing.json) as the initial Thing payload for Ditto.
+Use [config/ditto_thing.json](config/ditto_thing.json) as the initial Thing payload for Ditto.
 
 It defines these features:
 
@@ -93,11 +94,11 @@ Invoke-RestMethod `
   -Body $body
 ```
 
-If your Ditto policy differs, update `policyId` in [config/ditto_thing.json](/abs/path/c:/Users/Carson/OneDrive/Desktop/Proj%20Management/SQ-PM-proj/config/ditto_thing.json) and `DITTO_THING_ID` accordingly.
+If your Ditto policy differs, update `policyId` in [config/ditto_thing.json](config/ditto_thing.json) and `DITTO_THING_ID` accordingly.
 
 ## Run
 
-Start Kuksa and Ditto first.
+Start Kuksa, Ditto, and Zenoh first.
 
 If you want local test data, run the producer in one terminal:
 
@@ -105,10 +106,16 @@ If you want local test data, run the producer in one terminal:
 python send_obd_data_to_kuksa.py
 ```
 
-Then run the bridge in another terminal:
+Then run the Kuksa-to-Zenoh bridge in a second terminal:
 
 ```powershell
-python connect_kuksa.py
+python connect_kuksa_zenoh.py
+```
+
+Finally, run the Zenoh-to-Ditto bridge in a third terminal:
+
+```powershell
+python subscribe_ditto_zenoh.py
 ```
 
 On success, you should see lines like:
@@ -134,7 +141,24 @@ Published: {'VehicleSpeed': 121, 'EngineSpeed': 477, 'ThrottlePosition': 55, 'Co
   Kuksa Databroker is not running on the configured host and port.
 
 - `These signals were not found in Kuksa`
-  The configured paths in [config/signal_map.json](/abs/path/c:/Users/Carson/OneDrive/Desktop/Proj%20Management/SQ-PM-proj/config/signal_map.json) do not exist in the loaded Kuksa tree.
+  The configured paths in [config/signal_map.json](config/signal_map.json) do not exist in the loaded Kuksa tree.
 
 - `things:feature.notfound` or `404`
-  The Ditto Thing or required features do not exist yet. Create the Thing from [config/ditto_thing.json](/abs/path/c:/Users/Carson/OneDrive/Desktop/Proj%20Management/SQ-PM-proj/config/ditto_thing.json) first.
+  The Ditto Thing or required features do not exist yet. Create the Thing from [config/ditto_thing.json](config/ditto_thing.json) first.
+
+## System Architecture Diagrams
+
+### 1. Component Architecture & Data Transport
+This diagram illustrates how raw telemetry originates from sensor simulations, flows through Eclipse Kuksa for real-time state management, is routed via Eclipse Zenoh, and finally updates the digital twin in Eclipse Ditto.
+
+![Component Diagram](diagram/component_diagram.png)
+
+### 2. Execution Environment & Data Transformation
+This diagram maps the deployment environments, showing the separation between the Vehicle Compute Node (Edge) and the Cloud Infrastructure (Backend), highlighting where data transformation and diagnostic querying occur.
+
+![Execution Environment Diagram](diagram/execution_diagram.png)
+
+### 3. Functional Modification & Sequence
+This sequence diagram demonstrates our planned functional modification: simulating a degraded connectivity state and a coolant over-temperature fault, triggering offline buffering and threshold alerts within the digital twin.
+
+![Sequence Diagram](diagram/sequence_diagram.png)
