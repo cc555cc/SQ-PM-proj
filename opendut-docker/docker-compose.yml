@@ -1,0 +1,10 @@
+services:
+  carl:
+    image: ghcr.io/eclipse-opendut/opendut-carl:0.9.0
+    container_name: opendut-carl
+    ports:
+      - "8085:8080"
+    volumes:
+      - ./carl.toml:/home/carl/.config/opendut/carl/config.toml:ro
+      - ./tls:/etc/opendut/tls:ro
+    restart: unless-stopped

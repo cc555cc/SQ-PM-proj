@@ -1,23 +1,39 @@
+# This script uses FastAPI to expose simple Eclipse SOVD-style diagnostic
+# endpoints for the project pipeline. It reads the latest vehicle features
+# from the Ditto twin and returns either raw values or threshold-based status
+# summaries.
+#
+#steps:
+#1. Load environment variables and threshold rules from configuration.
+#2. Request the latest vehicle Thing data from Eclipse Ditto.
+#3. Extract the current feature values from the Ditto response.
+#4. Return raw signal values through the `/vehicle/raw` endpoint.
+#5. Return warning status summaries through the `/vehicle/status` endpoint.
+
 from fastapi import FastAPI, HTTPException
 import requests
 import os
 import json
 from dotenv import load_dotenv
 
+#load envrionement variables and threshold rule
 load_dotenv()
 
 app = FastAPI()
 
+#ditto
 DITTO_URL = os.getenv("DITTO_URL", "http://localhost:8080")
 DITTO_USERNAME = os.getenv("DITTO_USERNAME", "ditto")
 DITTO_PASSWORD = os.getenv("DITTO_PASSWORD", "ditto")
 THING_ID = os.getenv("DITTO_THING_ID", "org.eclipse.kuksa:vehicle1")
 REQUEST_TIMEOUT_SECONDS = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "5"))
 
+#read diagnostic threshold rules, load to python
 with open("config/thresholds.json", "r", encoding="utf-8") as f:
     thresholds = json.load(f)
 
-
+#request the current vehicle Thing from Eclipse Ditto so the SOVD API can
+#use the latest twin data to build diagnostic responses
 def get_ditto_thing():
     url = f"{DITTO_URL}/api/2/things/{THING_ID}"
     try:
@@ -27,15 +43,18 @@ def get_ditto_thing():
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
-        return response.json()
+        return response.json() #return response from ditto as parsed JSON data
     except requests.RequestException as e:
         raise HTTPException(status_code=503, detail=f"Ditto unavailable: {e}")
 
 
+#extract only the feature property values from the Ditto Thing response and
+#store them in a simpler dictionary keyed by feature name
 def extract_feature_values(thing):
     features = thing.get("features", {})
     values = {}
 
+    #for each features, extra their value
     for feature_name, feature_body in features.items():
         values[feature_name] = (
             feature_body.get("properties", {}).get("value")
@@ -43,7 +62,7 @@ def extract_feature_values(thing):
 
     return values
 
-
+#api
 @app.get("/")
 def root():
     return {"message": "OpenSOVD Diagnostic API running"}

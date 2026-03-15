@@ -1,0 +1,8 @@
+[network]
+
+[network.tls]
+enabled = false
+
+[vpn]
+enabled = false
+kind = "netbird"

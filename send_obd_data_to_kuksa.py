@@ -1,4 +1,4 @@
-# This script sends simulated OBD data to Kuksa for testing purposes.
+#This script sends simulated OBD data to Kuksa for testing purposes.
 import asyncio
 import os
 import random
@@ -17,13 +17,20 @@ KUKSA_HOST = os.getenv("KUKSA_HOST", "localhost")
 KUKSA_PORT = int(os.getenv("KUKSA_PORT", "55555"))
 PUBLISH_INTERVAL_SECONDS = float(os.getenv("PUBLISH_INTERVAL_SECONDS", "1"))
 
+SIGNALS = {
+    "VehicleSpeed": "Vehicle.OBD.VehicleSpeed",
+    "EngineSpeed": "Vehicle.OBD.EngineSpeed",
+    "ThrottlePosition": "Vehicle.OBD.ThrottlePosition",
+    "CoolantTemperature": "Vehicle.OBD.CoolantTemperature",
+}
+
 
 def generate_obd_values():
     return {
-        "Vehicle.OBD.Speed": random.randint(0, 255),
-        "Vehicle.OBD.EngineSpeed": random.randint(0, 1000),
-        "Vehicle.OBD.ThrottlePosition": random.randint(0, 100),
-        "Vehicle.OBD.CoolantTemperature": random.randint(0, 120),
+        SIGNALS["VehicleSpeed"]: random.randint(0, 255),
+        SIGNALS["EngineSpeed"]: random.randint(0, 1000),
+        SIGNALS["ThrottlePosition"]: random.randint(0, 100),
+        SIGNALS["CoolantTemperature"]: random.randint(0, 120),
     }
 
 
@@ -49,10 +56,10 @@ async def main():
             print(
                 "Published:",
                 {
-                    "VehicleSpeed": values["Vehicle.OBD.Speed"],
-                    "EngineSpeed": values["Vehicle.OBD.EngineSpeed"],
-                    "ThrottlePosition": values["Vehicle.OBD.ThrottlePosition"],
-                    "CoolantTemperature": values["Vehicle.OBD.CoolantTemperature"],
+                    "VehicleSpeed": values[SIGNALS["VehicleSpeed"]],
+                    "EngineSpeed": values[SIGNALS["EngineSpeed"]],
+                    "ThrottlePosition": values[SIGNALS["ThrottlePosition"]],
+                    "CoolantTemperature": values[SIGNALS["CoolantTemperature"]],
                 },
             )
 

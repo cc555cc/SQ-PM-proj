@@ -1,0 +1,11 @@
+ditto:
+cd \ditto
+docker compose -f .\deployment\docker\docker-compose.yml up -d
+
+docker:
+cd ~/kuksa-databroker
+docker run --rm -it -p 55555:55555 -v "$(pwd)/OBD.json:/OBD.json" ghcr.io/eclipse-kuksa/kuksa-databroker:main --insecure --vss /OBD.json
+
+zenoh:
+docker run --name zenoh-router -p 7447:7447 -d eclipse/zenoh:latest
+
