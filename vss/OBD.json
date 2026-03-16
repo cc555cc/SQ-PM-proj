@@ -17,6 +17,20 @@
             "unit": "rpm",
             "uuid": "b682eea93b3e5874ab3b52e95a1fad37"
           },
+          "FuelLevel": {
+            "datatype": "float",
+            "description": "Simulated fuel level percentage",
+            "type": "sensor",
+            "unit": "percent",
+            "uuid": "a3516c1f52c146b5bb8bfee09f90e5b6"
+          },
+          "BatteryVoltage": {
+            "datatype": "float",
+            "description": "Simulated battery voltage",
+            "type": "sensor",
+            "unit": "volt",
+            "uuid": "c4ba17b8378749f2b066506fd9869b37"
+          },
           "VehicleSpeed": {
             "datatype": "float",
             "description": "PID 0D - Vehicle speed",

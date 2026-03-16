@@ -215,6 +215,8 @@ $thingBody = @"
   "features": {
     "VehicleSpeed": {},
     "EngineSpeed": {},
+    "FuelLevel": {},
+    "BatteryVoltage": {},
     "ThrottlePosition": {},
     "CoolantTemperature": {}
   }
@@ -254,7 +256,7 @@ $thingBody = @"
 Start-Component `
     -Title "Kuksa" `
     -Workdir "C:\Users\Carson\kuksa-databroker" `
-    -Command 'docker run -d -p 55555:55555 -v "${PWD}\OBD.json:/OBD.json" ghcr.io/eclipse-kuksa/kuksa-databroker:main --insecure --vss /OBD.json'
+    -Command "docker run -d -p 55555:55555 -v `"${projectRoot}\vss\OBD.json:/OBD.json`" ghcr.io/eclipse-kuksa/kuksa-databroker:main --insecure --vss /OBD.json"
 
 # zenoh
 Start-Component `

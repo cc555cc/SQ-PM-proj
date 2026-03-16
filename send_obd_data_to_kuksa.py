@@ -20,6 +20,8 @@ PUBLISH_INTERVAL_SECONDS = float(os.getenv("PUBLISH_INTERVAL_SECONDS", "1"))
 SIGNALS = {
     "VehicleSpeed": "Vehicle.OBD.VehicleSpeed",
     "EngineSpeed": "Vehicle.OBD.EngineSpeed",
+    "FuelLevel": "Vehicle.OBD.FuelLevel",
+    "BatteryVoltage": "Vehicle.OBD.BatteryVoltage",
     "ThrottlePosition": "Vehicle.OBD.ThrottlePosition",
     "CoolantTemperature": "Vehicle.OBD.CoolantTemperature",
 }
@@ -29,6 +31,8 @@ def generate_obd_values():
     return {
         SIGNALS["VehicleSpeed"]: random.randint(0, 255),
         SIGNALS["EngineSpeed"]: random.randint(0, 1000),
+        SIGNALS["FuelLevel"]: random.randint(0, 100),
+        SIGNALS["BatteryVoltage"]: round(random.uniform(11.5, 14.8), 2),
         SIGNALS["ThrottlePosition"]: random.randint(0, 100),
         SIGNALS["CoolantTemperature"]: random.randint(0, 120),
     }
@@ -60,6 +64,8 @@ async def main():
                         {
                             "VehicleSpeed": values[SIGNALS["VehicleSpeed"]],
                             "EngineSpeed": values[SIGNALS["EngineSpeed"]],
+                            "FuelLevel": values[SIGNALS["FuelLevel"]],
+                            "BatteryVoltage": values[SIGNALS["BatteryVoltage"]],
                             "ThrottlePosition": values[SIGNALS["ThrottlePosition"]],
                             "CoolantTemperature": values[SIGNALS["CoolantTemperature"]],
                         },

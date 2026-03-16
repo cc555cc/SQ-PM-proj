@@ -11,6 +11,16 @@
         "value": 0
       }
     },
+    "FuelLevel": {
+      "properties": {
+        "value": 0
+      }
+    },
+    "BatteryVoltage": {
+      "properties": {
+        "value": 0
+      }
+    },
     "ThrottlePosition": {
       "properties": {
         "value": 0

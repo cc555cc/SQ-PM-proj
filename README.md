@@ -21,6 +21,8 @@ The bridge is currently configured for these Kuksa OBD paths:
 
 - `Vehicle.OBD.VehicleSpeed`
 - `Vehicle.OBD.EngineSpeed`
+- `Vehicle.OBD.FuelLevel`
+- `Vehicle.OBD.BatteryVoltage`
 - `Vehicle.OBD.ThrottlePosition`
 - `Vehicle.OBD.CoolantTemperature`
 
@@ -28,6 +30,8 @@ These map to Ditto feature IDs:
 
 - `VehicleSpeed`
 - `EngineSpeed`
+- `FuelLevel`
+- `BatteryVoltage`
 - `ThrottlePosition`
 - `CoolantTemperature`
 
@@ -100,6 +104,8 @@ It defines these features:
 
 - `VehicleSpeed`
 - `EngineSpeed`
+- `FuelLevel`
+- `BatteryVoltage`
 - `ThrottlePosition`
 - `CoolantTemperature`
 

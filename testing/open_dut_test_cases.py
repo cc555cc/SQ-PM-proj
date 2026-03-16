@@ -33,6 +33,8 @@ SOVD_URL = os.getenv("SOVD_URL", "http://localhost:20002")
 REQUIRED_FEATURES = [
     "VehicleSpeed",
     "EngineSpeed",
+    "FuelLevel",
+    "BatteryVoltage",
     "ThrottlePosition",
     "CoolantTemperature",
 ]
