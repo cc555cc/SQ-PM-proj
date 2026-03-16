@@ -50,18 +50,20 @@ Write-Host "Docker is ready."
 # stage 2: run each pipeline component with Docker
 # =========================
 
-function Start-ComponentWindow {
+function Start-Component {
     param(
         [string]$Title,
         [string]$Workdir,
         [string]$Command
     )
 
-    Start-Process powershell -ArgumentList @(
-        "-NoExit",
-        "-Command",
-        "cd '$Workdir'; `$Host.UI.RawUI.WindowTitle = '$Title'; $Command"
-    )
+    Write-Host "Starting $Title..."
+    Push-Location $Workdir
+    try {
+        Invoke-Expression $Command
+    } finally {
+        Pop-Location
+    }
 }
 
 function Wait-For-Component {
@@ -92,7 +94,7 @@ function Wait-For-Component {
 function Wait-For-Port {
     param(
         [string]$Name,
-        [string]$Host,
+        [string]$HostName,
         [int]$Port,
         [int]$TimeoutSeconds = 60
     )
@@ -100,7 +102,7 @@ function Wait-For-Port {
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 
     while ((Get-Date) -lt $deadline) {
-        $result = Test-NetConnection -ComputerName $Host -Port $Port -WarningAction SilentlyContinue
+        $result = Test-NetConnection -ComputerName $HostName -Port $Port -WarningAction SilentlyContinue
         if ($result.TcpTestSucceeded) {
             Write-Host "$Name is ready."
             return
@@ -201,11 +203,17 @@ function Initialize-Ditto {
 }
 '@
 
-    $thingBody = @"
+$thingBody = @"
 {
   "policyId": "$ThingId",
   "attributes": {
     "status": "created"
+  },
+  "features": {
+    "VehicleSpeed": {},
+    "EngineSpeed": {},
+    "ThrottlePosition": {},
+    "CoolantTemperature": {}
   }
 }
 "@
@@ -240,47 +248,40 @@ function Initialize-Ditto {
 # =========================
 
 # kuksa
-Start-ComponentWindow `
+Start-Component `
     -Title "Kuksa" `
     -Workdir "C:\Users\Carson\kuksa-databroker" `
-    -Command 'docker run --rm -it -p 55555:55555 -v "${PWD}\OBD.json:/OBD.json" ghcr.io/eclipse-kuksa/kuksa-databroker:main --insecure --vss /OBD.json'
-
-Wait-For-Port -Name "Kuksa" -Host "localhost" -Port 55555
+    -Command 'docker run -d -p 55555:55555 -v "${PWD}\OBD.json:/OBD.json" ghcr.io/eclipse-kuksa/kuksa-databroker:main --insecure --vss /OBD.json'
 
 # zenoh
-Start-ComponentWindow `
+Start-Component `
     -Title "Zenoh" `
     -Workdir $projectRoot `
     -Command "docker run --name zenoh-router -p 7447:7447 -d eclipse/zenoh:latest"
 
-Wait-For-Port -Name "Zenoh" -Host "localhost" -Port 7447
 
 # ditto
-Start-ComponentWindow `
+Start-Component `
     -Title "Ditto" `
     -Workdir "C:\Users\Carson\ditto" `
     -Command "docker compose -f .\deployment\docker\docker-compose.yml up -d"
 
-Wait-For-Component -Name "Ditto" -Url "http://localhost:8080"
 
 # IMPORTANT: initialize Ditto before subscriber/bridge starts
 Initialize-Ditto -ThingId "org.eclipse.kuksa:vehicle1"
 
 # zovd
-Start-ComponentWindow `
+Start-Component `
     -Title "ZOVD" `
     -Workdir "C:\Users\Carson\classic-diagnostic-adapter" `
     -Command "docker compose -f .\testcontainer\docker-compose.yml up -d --build"
 
-Wait-For-Component -Name "ZOVD" -Url "http://localhost:20002/health"
 
 # openDUT
-Start-ComponentWindow `
+Start-Component `
     -Title "openDut" `
     -Workdir $projectRoot `
     -Command "docker compose -f .\opendut-docker\docker-compose.yml up -d"
-
-Wait-For-Component -Name "openDut" -Url "http://localhost:8085"
 
 # =========================
 # stage 3: run scripts in venv
@@ -295,6 +296,7 @@ $venvDir = if (Test-Path (Join-Path $projectRoot "venv\Scripts\Activate.ps1")) {
 }
 
 $activateScript = ".\$venvDir\Scripts\Activate.ps1"
+$activateScriptPath = Join-Path $projectRoot "$venvDir\Scripts\Activate.ps1"
 
 function Run-ProjectScript {
     param(
@@ -309,6 +311,21 @@ function Run-ProjectScript {
         "-Command",
         "cd '$ProjectRoot'; `$Host.UI.RawUI.WindowTitle = '$Title'; & '$ActivateScript'; $Command"
     )
+}
+
+#wait for all service to run, then start the test
+Wait-For-Port -Name "Kuksa" -HostName "localhost" -Port 55555
+Wait-For-Port -Name "Zenoh" -HostName "localhost" -Port 7447
+Wait-For-Component -Name "Ditto" -Url "http://localhost:8080"
+Wait-For-Component -Name "ZOVD" -Url "http://localhost:20002/health"
+Wait-For-Component -Name "openDut" -Url "http://localhost:8085"
+
+# run test with openDUT first and stop the pipeline if it fails
+Set-Location $projectRoot
+& $activateScriptPath
+python .\testing\open_dut_test_cases.py
+if ($LASTEXITCODE -ne 0) {
+    throw "openDut integration test failed. Stopping pipeline before launching project scripts."
 }
 
 # generate OBD data to Kuksa
@@ -338,10 +355,3 @@ Run-ProjectScript `
     -ProjectRoot $projectRoot `
     -ActivateScript $activateScript `
     -Command "python -m uvicorn diagnostics.sovd_api_server:app --host 0.0.0.0 --port 9001"
-
-# run test with openDUT
-Run-ProjectScript `
-    -Title "openDut Test" `
-    -ProjectRoot $projectRoot `
-    -ActivateScript $activateScript `
-    -Command "python .\testing\open_dut_test_cases.py"

@@ -1,3 +1,7 @@
+# Thin FastAPI wrapper that proxies selected requests to the real OpenSOVD CDA
+# service so the project can expose a stable local API without starting a
+# second SOVD component.
+
 from fastapi import FastAPI, HTTPException
 import requests
 import os

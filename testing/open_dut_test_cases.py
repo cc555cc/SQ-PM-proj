@@ -1,17 +1,20 @@
-# This script runs OpenDuT-style validation checks for the project pipeline.
-# It verifies that Ditto is reachable, required vehicle features exist, the
-# SOVD API responds correctly, and live values continue to change over time.
+#this script runs integration checks for the current pipeline that uses
+#official external component stacks.
+#it verifies that:
+#- OpenDuT CARL is reachable from the Docker-hosted CARL image.
+#- Eclipse Ditto is reachable and contains the expected vehicle features.
+#- The real OpenSOVD CDA service is reachable on its health endpoints.
+#- The real OpenSOVD CDA service can return diagnostic component data.
 #
-# Steps:
-# 1. Load environment variables for Ditto and SOVD connections.
-# 2. Request the current vehicle Thing from Eclipse Ditto.
-# 3. Verify the required vehicle features exist in the Ditto twin.
-# 4. Call the SOVD status endpoint and check its response structure.
-# 5. Compare two SOVD raw value snapshots to confirm the pipeline is live.
+#steps:
+#1. Load environment variables for OpenDuT, Ditto, and OpenSOVD.
+#2. Confirm the Docker-hosted OpenDuT CARL service is reachable.
+#3. Request the current vehicle Thing from Eclipse Ditto.
+#4. Verify the required vehicle features exist in the Ditto twin.
+#5. Call the real OpenSOVD CDA health endpoint and validate its response.
+#6. Call the real OpenSOVD CDA readiness and component-list endpoints.
 import os
-import time
 import unittest
-
 import requests
 from dotenv import load_dotenv
 
@@ -34,7 +37,7 @@ REQUIRED_FEATURES = [
     "CoolantTemperature",
 ]
 
-
+#test: does ditto response on expected url
 def get_ditto_thing():
     url = f"{DITTO_URL}/api/2/things/{DITTO_THING_ID}"
     response = requests.get(
@@ -45,17 +48,18 @@ def get_ditto_thing():
     response.raise_for_status()
     return response.json()
 
-
+#test: attempt to fetch raw vehicle data via SOVD
 def get_raw_values():
     response = requests.get(f"{SOVD_URL}/vehicle/v15/components", timeout=5)
     response.raise_for_status()
     return response.json()
 
+#test: openDut service running
 def get_opendut_carl():
     response = requests.get(OPENDUT_CARL_URL, timeout=5, allow_redirects = False)
     return response
 
-
+#test the pipeline if all componenet are running
 class PipelineTests(unittest.TestCase):
     def assert_opendut_available(self):
         response = get_opendut_carl()
@@ -66,7 +70,6 @@ class PipelineTests(unittest.TestCase):
         )
 
     def setUp(self):
-        # Treat OpenDuT as a suite-level integration dependency for every test.
         self.assert_opendut_available()
 
     def test_opendut_connection(self):
