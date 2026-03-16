@@ -1,10 +1,11 @@
-# steps:
-# 1. confirm Docker is running, if not, start it
-# 2. run each component in its own window using Docker
-# 3. wait for required services to become ready
-# 4. initialize Eclipse Ditto policy + thing
-# 5. activate venv
-# 6. run each project script
+#steps:
+#1. confirm Docker is running, if not, start it
+#2. run each component using docker in the background
+#3. wait for required services to become ready
+#4. initialize Eclipse Ditto policy + thing
+#5. activate venv
+#6. run openDut test script first
+#7. run the rest of the pipeline script if tests passed
 
 $projectRoot = $PSScriptRoot
 
@@ -19,6 +20,7 @@ function Test-Docker {
     return ($LASTEXITCODE -eq 0)
 }
 
+#make sure docker is running
 function Wait-For-Docker {
     if (Test-Docker) {
         return
@@ -26,10 +28,11 @@ function Wait-For-Docker {
 
     if (Test-Path $dockerDesktop) {
         Start-Process $dockerDesktop | Out-Null
-    } else {
+    } else { #drop if device does not have docker
         throw "Docker Desktop was not found at: $dockerDesktop"
     }
 
+    #set max waiting time of waiting docker to startup
     $maxWait = (Get-Date).AddMinutes(3)
 
     while ((Get-Date) -lt $maxWait) {
@@ -49,7 +52,7 @@ Write-Host "Docker is ready."
 # =========================
 # stage 2: run each pipeline component with Docker
 # =========================
-
+#used to start a component service
 function Start-Component {
     param(
         [string]$Title,
@@ -88,7 +91,7 @@ function Wait-For-Component {
         Start-Sleep -Seconds 2
     }
 
-    throw "$Name did not become ready in time. Dropping pipeline."
+    throw "$Name is not running. Dropping pipeline."
 }
 
 function Wait-For-Port {
@@ -111,11 +114,11 @@ function Wait-For-Port {
         Start-Sleep -Seconds 2
     }
 
-    throw "$Name did not become ready in time. Dropping pipeline."
+    throw "$Name is not ready. Dropping pipeline."
 }
 
 # =========================
-# Ditto helpers
+# Ditto helpers: create policy and Thing, essential for ditto to run properly and expose itself
 # =========================
 
 function Get-BasicAuthHeader {
@@ -287,6 +290,7 @@ Start-Component `
 # stage 3: run scripts in venv
 # =========================
 
+#activate virtual environment before running any pipeline script
 $venvDir = if (Test-Path (Join-Path $projectRoot "venv\Scripts\Activate.ps1")) {
     "venv"
 } elseif (Test-Path (Join-Path $projectRoot ".venv\Scripts\Activate.ps1")) {
@@ -320,7 +324,7 @@ Wait-For-Component -Name "Ditto" -Url "http://localhost:8080"
 Wait-For-Component -Name "ZOVD" -Url "http://localhost:20002/health"
 Wait-For-Component -Name "openDut" -Url "http://localhost:8085"
 
-# run test with openDUT first and stop the pipeline if it fails
+#run test with openDUT first and stop the pipeline if it fails
 Set-Location $projectRoot
 & $activateScriptPath
 python .\testing\open_dut_test_cases.py
@@ -328,28 +332,28 @@ if ($LASTEXITCODE -ne 0) {
     throw "openDut integration test failed. Stopping pipeline before launching project scripts."
 }
 
-# generate OBD data to Kuksa
+#generate OBD data to Kuksa
 Run-ProjectScript `
     -Title "OBD Publisher" `
     -ProjectRoot $projectRoot `
     -ActivateScript $activateScript `
     -Command "python .\send_obd_data_to_kuksa.py"
 
-# connect Kuksa to Zenoh
+#connect Kuksa to Zenoh
 Run-ProjectScript `
     -Title "Send Data to Zenoh" `
     -ProjectRoot $projectRoot `
     -ActivateScript $activateScript `
     -Command "python .\connect_kuksa_zenoh.py"
 
-# subscribe Ditto to Zenoh
+#subscribe Ditto to Zenoh
 Run-ProjectScript `
     -Title "Get Feature Update from Zenoh" `
     -ProjectRoot $projectRoot `
     -ActivateScript $activateScript `
     -Command "python .\subscribe_ditto_zenoh.py"
 
-# start SOVD API service
+#start SOVD API service
 Run-ProjectScript `
     -Title "SOVD API" `
     -ProjectRoot $projectRoot `

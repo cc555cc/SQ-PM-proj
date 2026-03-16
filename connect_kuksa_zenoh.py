@@ -156,12 +156,12 @@ def main():
                 try:
                     validate_signal_paths(client, signal_map)
 
-                    # Use the same Kuksa API that already works in your direct Ditto bridge.
+                    #use the same kuksa API in ditto bridge.
                     for updates in client.subscribe_current_values(subscribed_signals):
                         values = extract_signal_values(updates)
                         build_and_ship_feature(zenoh_session, values, signal_map)
                 finally:
-                    # Close the Zenoh session cleanly so reconnects do not leak handles.
+                    #close the zenoh session cleanly so reconnects do not leak handles.
                     zenoh_session.close()
         except (ImportError, ValueError) as e:
             raise RuntimeError(f"Startup error: {e}") from e
