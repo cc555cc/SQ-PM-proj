@@ -2,10 +2,9 @@
 # service so the project can expose a stable local API without starting a
 # second SOVD component.
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 import requests
 import os
-import json
 from dotenv import load_dotenv
 
 #load envrionement variables and threshold rule
@@ -22,14 +21,18 @@ SOVD_URL = os.getenv("SOVD_URL", "http://localhost:20002")
 REQUEST_TIMEOUT_SECONDS = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "5"))
 
 #connect to SOVD
-def get_sovd(path: str):
+def request_sovd(path: str) -> requests.Response:
     url = f"{SOVD_URL}{path}"
     try:
         response = requests.get(url, timeout = REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()
-        return response.json()
+        return response
     except requests.RequestException as e:
         raise HTTPException(status_code = 503, detail = f"SOVD not available: {e}")
+
+
+def get_sovd_json(path: str):
+    return request_sovd(path).json()
 
 #api
 @app.get("/")
@@ -45,6 +48,11 @@ def root():
             "/vehicle/raw",
             "/vehicle/status",
         ],
+        "upstream_mappings": {
+            "/health/ready": "/health",
+            "/vehicle/raw": "/vehicle/v15/components",
+            "/vehicle/status": "/health",
+        },
     }
 
 @app.get("/health/live")
@@ -54,7 +62,7 @@ def health_live():
 @app.get("/health/ready")
 def health_ready():
     try:
-        get_sovd("/")
+        request_sovd("/health")
         return{
             "status": "ready",
             "sovd_url": SOVD_URL,
@@ -68,11 +76,14 @@ def health_ready():
 
 @app.get("/vehicle/raw")
 def vehicle_raw():
-    response = get_sovd("/vehicle/raw")
-    return response
+    return get_sovd_json("/vehicle/v15/components")
 
 
 @app.get("/vehicle/status")
 def vehicle_status():
-    response = get_sovd("/vehicle/status")
-    return response.json()
+    upstream_response = request_sovd("/health")
+    return Response(
+        content=upstream_response.text,
+        status_code=upstream_response.status_code,
+        media_type=upstream_response.headers.get("content-type", "application/json"),
+    )
