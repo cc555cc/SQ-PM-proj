@@ -1,10 +1,10 @@
-# Thin FastAPI wrapper that proxies selected requests to the real OpenSOVD CDA
-# service so the project can expose a stable local API without starting a
-# second SOVD component.
+#this script serves as a FastAPI wrapper that proxies selected requests to OpenSOVD CDA service, allowing the project
+#to expose a stable and standardized API
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException
 import requests
 import os
+import json
 from dotenv import load_dotenv
 
 #load envrionement variables and threshold rule
@@ -21,18 +21,14 @@ SOVD_URL = os.getenv("SOVD_URL", "http://localhost:20002")
 REQUEST_TIMEOUT_SECONDS = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "5"))
 
 #connect to SOVD
-def request_sovd(path: str) -> requests.Response:
+def get_sovd(path: str):
     url = f"{SOVD_URL}{path}"
     try:
         response = requests.get(url, timeout = REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()
-        return response
+        return response.json()
     except requests.RequestException as e:
         raise HTTPException(status_code = 503, detail = f"SOVD not available: {e}")
-
-
-def get_sovd_json(path: str):
-    return request_sovd(path).json()
 
 #api
 @app.get("/")
@@ -48,11 +44,6 @@ def root():
             "/vehicle/raw",
             "/vehicle/status",
         ],
-        "upstream_mappings": {
-            "/health/ready": "/health",
-            "/vehicle/raw": "/vehicle/v15/components",
-            "/vehicle/status": "/health",
-        },
     }
 
 @app.get("/health/live")
@@ -62,7 +53,7 @@ def health_live():
 @app.get("/health/ready")
 def health_ready():
     try:
-        request_sovd("/health")
+        get_sovd("/")
         return{
             "status": "ready",
             "sovd_url": SOVD_URL,
@@ -76,14 +67,11 @@ def health_ready():
 
 @app.get("/vehicle/raw")
 def vehicle_raw():
-    return get_sovd_json("/vehicle/v15/components")
+    response = get_sovd("/vehicle/raw")
+    return response
 
 
 @app.get("/vehicle/status")
 def vehicle_status():
-    upstream_response = request_sovd("/health")
-    return Response(
-        content=upstream_response.text,
-        status_code=upstream_response.status_code,
-        media_type=upstream_response.headers.get("content-type", "application/json"),
-    )
+    response = get_sovd("/vehicle/status")
+    return response.json()
