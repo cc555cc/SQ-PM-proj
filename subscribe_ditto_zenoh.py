@@ -97,6 +97,8 @@ def update_ditto(feature_updates):
         print(f"Ditto [{feature_name}]: {response.status_code}")
 
 
+
+
 def main():
     while True:
         try:
