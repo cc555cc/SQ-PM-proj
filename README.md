@@ -41,9 +41,9 @@ These map to Ditto feature IDs:
 - Docker Desktop installed and running
 - A Python virtual environment in this repo (`venv` or `.venv`)
 - Official component repos or startup locations available on the same machine:
-  - Ditto: `C:\Users\Carson\ditto`
-  - Kuksa Databroker: `C:\Users\Carson\kuksa-databroker`
-  - OpenSOVD Classic Diagnostic Adapter: `C:\Users\Carson\classic-diagnostic-adapter`
+  - Ditto: `~\ditto`
+  - Kuksa Databroker: `~\kuksa-databroker`
+  - OpenSOVD Classic Diagnostic Adapter: `~\classic-diagnostic-adapter`
   - OpenDuT compose setup: [opendut-docker](opendut-docker)
 - A running Eclipse Zenoh router
 - A Ditto policy and Thing that match the configured Thing ID and features
@@ -169,10 +169,10 @@ If your Ditto policy differs, update `policyId` in [config/ditto_thing.json](con
 The pipeline works best when started in this order:
 
 1. Start Docker Desktop and wait for `docker info` to succeed.
-2. Start official Ditto from `C:\Users\Carson\ditto`.
-3. Start Kuksa Databroker with `OBD.json` from `C:\Users\Carson\kuksa-databroker`.
+2. Start official Ditto from `~\ditto`.
+3. Start Kuksa Databroker with `OBD.json` from `~\kuksa-databroker`.
 4. Start Zenoh router.
-5. Start the real OpenSOVD CDA from `C:\Users\Carson\classic-diagnostic-adapter`.
+5. Start the real OpenSOVD CDA from `~\classic-diagnostic-adapter`.
 6. Start OpenDuT from [opendut-docker](opendut-docker).
 7. Bootstrap Ditto policy and Thing.
 8. Activate the repo virtual environment and start the project scripts.

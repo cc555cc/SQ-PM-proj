@@ -255,7 +255,7 @@ $thingBody = @"
 # kuksa
 Start-Component `
     -Title "Kuksa" `
-    -Workdir "C:\Users\Carson\kuksa-databroker" `
+    -Workdir "~\kuksa-databroker" `
     -Command "docker run -d -p 55555:55555 -v `"${projectRoot}\vss\OBD.json:/OBD.json`" ghcr.io/eclipse-kuksa/kuksa-databroker:main --insecure --vss /OBD.json"
 
 # zenoh
@@ -268,7 +268,7 @@ Start-Component `
 # ditto
 Start-Component `
     -Title "Ditto" `
-    -Workdir "C:\Users\Carson\ditto" `
+    -Workdir "~\ditto" `
     -Command "docker compose -f .\deployment\docker\docker-compose.yml up -d"
 
 
@@ -278,7 +278,7 @@ Initialize-Ditto -ThingId "org.eclipse.kuksa:vehicle1"
 # zovd
 Start-Component `
     -Title "ZOVD" `
-    -Workdir "C:\Users\Carson\classic-diagnostic-adapter" `
+    -Workdir "~\classic-diagnostic-adapter" `
     -Command "docker compose -f .\testcontainer\docker-compose.yml up -d --build"
 
 
