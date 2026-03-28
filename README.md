@@ -6,6 +6,110 @@ The current iteration extends that pipeline with fault injection and fault-aware
 
 It also supports multi-vehicle simulation by fanning out the telemetry stream into multiple configured vehicle identities, each with its own Zenoh prefix and Ditto Thing.
 
+## Quick Setup
+
+If you are setting this up on a new Windows machine, use this checklist first.
+
+### 1. Install The Prerequisites
+
+- Python 3.13
+- Docker Desktop
+- Git
+
+After installing Python, confirm these commands work in a new PowerShell window:
+
+```powershell
+python --version
+python -m pip --version
+docker info
+```
+
+### 2. Clone The External Repositories
+
+This project expects these official repositories to exist under your home folder:
+
+```powershell
+cd $HOME
+git clone https://github.com/eclipse-ditto/ditto.git
+git clone https://github.com/eclipse-kuksa/kuksa-databroker.git
+git clone https://github.com/eclipse-opensovd/classic-diagnostic-adapter.git
+```
+
+That should create:
+
+- `C:\Users\<your-user>\ditto`
+- `C:\Users\<your-user>\kuksa-databroker`
+- `C:\Users\<your-user>\classic-diagnostic-adapter`
+
+### 3. Fix OpenSOVD Shell Script Line Endings On Windows
+
+In the `classic-diagnostic-adapter` repo, make sure these files use LF line endings before building:
+
+- `testcontainer\ecu-sim\docker\entrypoint.sh`
+- `testcontainer\ecu-sim\docker\ipcli.sh`
+- `testcontainer\cda\entrypoint.sh`
+
+If they use CRLF, the `ecu-sim` or `cda` containers may fail to start on Windows.
+
+### 4. Create The Project Virtual Environment
+
+From this repository:
+
+```powershell
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+### 5. Run The Infrastructure
+
+From this repository:
+
+```powershell
+.\pipeline.ps1
+```
+
+The pipeline should report:
+
+- `Kuksa is ready.`
+- `Zenoh is ready.`
+- `Ditto is ready.`
+- `ZOVD is ready.`
+- `openDut is ready.`
+- `OK`
+
+### 6. Run The Telemetry Flow
+
+Use three terminals in the repo:
+
+Terminal 1:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+python send_obd_data_to_kuksa.py
+```
+
+Terminal 2:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+python connect_kuksa_zenoh.py
+```
+
+Terminal 3:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+python subscribe_ditto_zenoh.py
+```
+
+At that point you should see:
+
+- injected faults in the publisher output
+- per-vehicle recovery logs in the bridge output
+- successful Ditto updates for fault events in the subscriber output
+
 ## Current Scope
 
 `connect_kuksa_zenoh.py` and `subscribe_ditto_zenoh.py` work together to do four things:
@@ -129,7 +233,14 @@ $env:DITTO_THING_ID="org.eclipse.kuksa:vehicle1"
 $env:ZENOH_PEER="tcp/localhost:7447"
 $env:OPENDUT_URL="http://localhost:8085"
 $env:SOVD_URL="http://localhost:20002"
+$env:VERBOSE_LOGGING="false"
 ```
+
+Logging behavior:
+
+- default output is concise and demo-friendly
+- fault and recovery events are still printed automatically
+- set `VERBOSE_LOGGING=true` if you want full payload-style debug output
 
 Important host ports in the current setup:
 
@@ -315,6 +426,7 @@ For a fast manual demo:
 - keep three vehicles in [config/vehicles.json](config/vehicles.json)
 - run the three pipeline scripts side by side
 - watch one Ditto Thing for fault recovery behavior and compare all three Ditto Things for multi-vehicle behavior
+- keep `VERBOSE_LOGGING=false` unless you need deeper debugging
 
 ## Run
 

@@ -40,6 +40,7 @@ except Exception as exc:
 #kuksa env
 KUKSA_HOST = os.getenv("KUKSA_HOST", "localhost")
 KUKSA_PORT = int(os.getenv("KUKSA_PORT", "55555"))
+VERBOSE_LOGGING = os.getenv("VERBOSE_LOGGING", "false").lower() == "true"
 
 #zenoh env
 ZENOH_PEER = os.getenv("ZENOH_PEER", "tcp/localhost:7447")
@@ -120,6 +121,19 @@ def connect_to_zenoh():
 
     return zenoh.open(config)
 
+
+def log_bridge_event(vehicle_id, feature_name, quality_report, recovery_result):
+    if quality_report["quality"] == "good" and not VERBOSE_LOGGING:
+        return
+
+    print(
+        f"[{vehicle_id}] {feature_name}: "
+        f"quality={quality_report['quality']} "
+        f"faults={quality_report['faults'] or ['none']} "
+        f"recovery={recovery_result['recovery_action']} "
+        f"value={recovery_result['effective_value']}"
+    )
+
 #build payload and ship to zenoh
 def build_and_ship_feature(
     zenoh_session,
@@ -152,7 +166,8 @@ def build_and_ship_feature(
     zenoh_prefix = vehicle_config.get("zenoh_prefix", ZENOH_PUBLISH)
     key = f"{zenoh_prefix}/{signal.replace('.','/')}"
     zenoh_session.put(key, json.dumps(payload))
-    print(f"Published to Zenoh: {key} with payload: {payload}")
+    if VERBOSE_LOGGING:
+        print(f"Published to Zenoh: {key} with payload: {payload}")
 
 
 def publish_quality_updates(
@@ -207,6 +222,12 @@ def publish_quality_updates(
                 last_good_by_vehicle[signal] = profiled_raw_value
 
             if quality_report["quality"] != "good" or signal in current_values:
+                log_bridge_event(
+                    vehicle_id=vehicle_id,
+                    feature_name=signal_map[signal],
+                    quality_report=quality_report,
+                    recovery_result=recovery_result,
+                )
                 build_and_ship_feature(
                     zenoh_session=zenoh_session,
                     vehicle_config=vehicle_config,
@@ -266,6 +287,24 @@ def main():
                             last_good_values=last_good_values,
                             cycle_index=cycle_index,
                         )
+                        if not VERBOSE_LOGGING:
+                            good_count = sum(
+                                1
+                                for signal in signal_map.keys()
+                                for _vehicle_id in VEHICLE_REGISTRY.keys()
+                                if build_quality_report(
+                                    signal=signal,
+                                    value=current_values.get(signal),
+                                    last_seen_cycle=last_seen_cycles.get(signal),
+                                    current_cycle=cycle_index,
+                                    fault_config=FAULT_CONFIG,
+                                )["quality"] == "good"
+                            )
+                            print(
+                                f"[cycle {cycle_index}] bridge processed "
+                                f"{len(values)} source updates across {len(VEHICLE_REGISTRY)} vehicles; "
+                                f"healthy_routes={good_count}"
+                            )
                 finally:
                     #close the zenoh session cleanly so reconnects do not leak handles.
                     zenoh_session.close()

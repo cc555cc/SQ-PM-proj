@@ -40,6 +40,7 @@ DITTO_USERNAME = os.getenv("DITTO_USERNAME", "ditto")
 DITTO_THING_ID = os.getenv("DITTO_THING_ID", "org.eclipse.kuksa:vehicle1")
 DITTO_PASSWORD = os.getenv("DITTO_PASSWORD", "ditto")
 REQUEST_TIMEOUT_SECONDS = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "5"))
+VERBOSE_LOGGING = os.getenv("VERBOSE_LOGGING", "false").lower() == "true"
 
 
 def create_zenoh_session():
@@ -77,6 +78,10 @@ def build_feature_updates(payload):
 
     return {
         "thing_id": thing_id,
+        "vehicle_id": vehicle_id,
+        "quality": quality,
+        "faults": faults,
+        "recovery_action": recovery_action,
         "feature_updates": {
             feature_name: {
                 "properties": {
@@ -100,6 +105,10 @@ def build_feature_updates(payload):
 def update_ditto(feature_updates):
     headers = {"Content-Type": "application/json"}
     thing_id = feature_updates["thing_id"]
+    vehicle_id = feature_updates["vehicle_id"]
+    quality = feature_updates["quality"]
+    faults = feature_updates["faults"]
+    recovery_action = feature_updates["recovery_action"]
 
     for feature_name, payload in feature_updates["feature_updates"].items():
         url = f"{DITTO_URL}/api/2/things/{thing_id}/features/{feature_name}"
@@ -120,7 +129,14 @@ def update_ditto(feature_updates):
                 f"at '{url}': {response.status_code} {response.text}"
             ) from exc
 
-        print(f"Ditto [{feature_name}]: {response.status_code}")
+        if quality != "good" or VERBOSE_LOGGING:
+            print(
+                f"[Ditto:{vehicle_id}] {feature_name}: "
+                f"status={response.status_code} "
+                f"quality={quality} "
+                f"faults={faults or ['none']} "
+                f"recovery={recovery_action}"
+            )
 
 
 
