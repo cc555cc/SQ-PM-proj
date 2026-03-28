@@ -35,6 +35,13 @@ SIGNALS = {
     "CoolantTemperature": "Vehicle.OBD.CoolantTemperature",
 }
 
+RED_TEXT = "\033[31m"
+RESET_TEXT = "\033[0m"
+
+
+def colorize_red(message):
+    return f"{RED_TEXT}{message}{RESET_TEXT}"
+
 
 def generate_obd_values():
     return {
@@ -98,12 +105,21 @@ async def main():
                     if updates:
                         await client.set_current_values(updates)
 
-                    print(
+                    cycle_summary = (
                         f"[cycle {cycle_index}] published={summarize_published_values(ready_values)} "
                         f"faults={summarize_faults(injected_faults)}"
                     )
+                    print(
+                        colorize_red(cycle_summary)
+                        if injected_faults
+                        else cycle_summary
+                    )
                     if injected_faults:
-                        print(f"[cycle {cycle_index}] fault details: {injected_faults}")
+                        print(
+                            colorize_red(
+                                f"[cycle {cycle_index}] fault details: {injected_faults}"
+                            )
+                        )
                     elif VERBOSE_LOGGING:
                         print(f"[cycle {cycle_index}] values: {ready_values}")
 

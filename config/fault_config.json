@@ -1,6 +1,7 @@
 {
   "enabled": true,
   "cycle_interval_seconds": 1.0,
+  "faulty_cycle_probability": 0.3,
   "missing_data_probability": 0.1,
   "delayed_signal_probability": 0.15,
   "incorrect_value_probability": 0.1,

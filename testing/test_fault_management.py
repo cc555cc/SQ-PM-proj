@@ -44,6 +44,16 @@ class FaultManagementTests(unittest.TestCase):
         self.assertEqual(updates["Vehicle.OBD.VehicleSpeed"], 100)
         self.assertEqual(faults, [])
 
+    def test_non_faulty_cycle_passthroughs_values(self):
+        config = load_fault_config()
+        config["faulty_cycle_probability"] = 0.0
+        injector = FaultInjector(config)
+        updates, faults = injector.next_updates(
+            {"Vehicle.OBD.VehicleSpeed": 100}
+        )
+        self.assertEqual(updates["Vehicle.OBD.VehicleSpeed"], 100)
+        self.assertEqual(faults, [])
+
     def test_invalid_value_reuses_last_good_value(self):
         quality_report = {
             "quality": "invalid",

@@ -7,6 +7,7 @@ from pathlib import Path
 DEFAULT_FAULT_CONFIG = {
     "enabled": True,
     "cycle_interval_seconds": 1.0,
+    "faulty_cycle_probability": 0.3,
     "missing_data_probability": 0.1,
     "delayed_signal_probability": 0.15,
     "incorrect_value_probability": 0.1,
@@ -185,6 +186,11 @@ class FaultInjector:
         self.pending_updates = remaining_pending
 
         if not self.fault_config.get("enabled", True):
+            ready_updates.update(generated_values)
+            return ready_updates, injected_faults
+
+        faulty_cycle_probability = self.fault_config.get("faulty_cycle_probability", 1.0)
+        if random.random() >= faulty_cycle_probability:
             ready_updates.update(generated_values)
             return ready_updates, injected_faults
 
