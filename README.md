@@ -2,6 +2,10 @@
 
 This repository is currently focused on one milestone: bridging live OBD data from Kuksa Databroker into Eclipse Ditto using Eclipse Zenoh.
 
+The current iteration extends that pipeline with fault injection and fault-aware handling so the system can simulate and surface non-ideal SDV conditions instead of only the happy path.
+
+It also supports multi-vehicle simulation by fanning out the telemetry stream into multiple configured vehicle identities, each with its own Zenoh prefix and Ditto Thing.
+
 ## Current Scope
 
 `connect_kuksa_zenoh.py` and `subscribe_ditto_zenoh.py` work together to do four things:
@@ -12,6 +16,46 @@ This repository is currently focused on one milestone: bridging live OBD data fr
 4. Update the matching Ditto features via the REST API.
 
 `send_obd_data_to_kuksa.py` is an optional local test producer. It publishes random OBD values into Kuksa so the bridge has live data to forward to Ditto.
+
+`config/fault_config.json` controls the fault simulation profile used by the test producer and the bridge quality checks.
+
+`config/vehicles.json` controls the simulated vehicle fleet. Each vehicle entry defines:
+
+- `thing_id`
+- `zenoh_prefix`
+- `signal_offsets`
+
+## Fault Injection Layer
+
+This iteration introduces a multi-layer resilience flow:
+
+1. `send_obd_data_to_kuksa.py` injects random missing data, delayed signals, and incorrect values.
+2. `connect_kuksa_zenoh.py` detects stale or out-of-range data, repairs unsafe values with last-known-good or default fallbacks, and adds quality metadata to each Zenoh payload.
+3. `subscribe_ditto_zenoh.py` writes both the recovered value and its health state into Ditto feature properties.
+
+Ditto feature properties now include:
+
+- `value`
+- `rawValue`
+- `quality`
+- `faults`
+- `recoveryAction`
+- `pipelineSafe`
+- `sourceTimestamp`
+- `receivedTimestamp`
+- `cycle`
+- `isHealthy`
+
+## Multi-Vehicle Flow
+
+The current multi-vehicle implementation uses one Kuksa telemetry stream as the shared simulation source and fans it out into multiple vehicle-specific streams in the Kuksa-to-Zenoh bridge.
+
+For each configured vehicle in `config/vehicles.json`, the bridge:
+
+1. Applies optional per-signal offsets to create a distinct simulated vehicle profile.
+2. Publishes to a vehicle-specific Zenoh prefix such as `vehicle/vehicle2/vss/...`.
+3. Includes `vehicleId` and `thingId` in the payload.
+4. Lets the Zenoh-to-Ditto bridge update the matching Ditto Thing independently.
 
 The active Kuksa to Ditto mapping lives in [config/signal_map.json](config/signal_map.json).
 
@@ -178,6 +222,99 @@ The pipeline works best when started in this order:
 8. Activate the repo virtual environment and start the project scripts.
 
 The current [pipeline.ps1](pipeline.ps1) follows that model. It assumes the external Ditto, Kuksa, and OpenSOVD directories above exist on the same machine.
+
+## Verification
+
+Use this section to verify the two major extensions in this iteration:
+
+1. Fault injection and recovery handling
+2. Multi-vehicle simulation
+
+### Verify Fault Injection And Recovery
+
+1. Open [config/fault_config.json](config/fault_config.json) and make sure fault injection is enabled.
+2. For a quick demo, temporarily raise the fault probabilities so the behavior appears often:
+   - `missing_data_probability`
+   - `delayed_signal_probability`
+   - `incorrect_value_probability`
+3. Start the pipeline:
+   - `python send_obd_data_to_kuksa.py`
+   - `python connect_kuksa_zenoh.py`
+   - `python subscribe_ditto_zenoh.py`
+4. Watch the publisher output for injected fault messages such as `missing_data`, `delayed_signal`, or `incorrect_value`.
+5. Watch the Kuksa-to-Zenoh bridge output and confirm the payload includes:
+   - `rawValue`
+   - `value`
+   - `quality`
+   - `faults`
+   - `recoveryAction`
+   - `pipelineSafe`
+6. Query Ditto and confirm the feature properties show both the fault and the recovery result:
+
+```powershell
+$pair = "ditto:ditto"
+$encoded = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair))
+$headers = @{ Authorization = "Basic $encoded" }
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/2/things/org.eclipse.kuksa:vehicle1" `
+  -Headers $headers
+```
+
+Expected result:
+
+- `rawValue` may contain the faulty or delayed source value
+- `value` should contain the safe recovered value used by the pipeline
+- `quality` should change to values such as `missing`, `degraded`, or `invalid`
+- `recoveryAction` should explain what the system did, such as reusing the last known good value or using a default
+- `pipelineSafe` should remain `true` when the signal was repaired successfully
+
+### Verify Multi-Vehicle Simulation
+
+1. Open [config/vehicles.json](config/vehicles.json) and confirm there are multiple configured vehicles such as `vehicle1`, `vehicle2`, and `vehicle3`.
+2. Start the same three scripts:
+   - `python send_obd_data_to_kuksa.py`
+   - `python connect_kuksa_zenoh.py`
+   - `python subscribe_ditto_zenoh.py`
+3. Watch the Kuksa-to-Zenoh bridge output and confirm it publishes to different Zenoh prefixes such as:
+   - `vehicle/vehicle1/vss/...`
+   - `vehicle/vehicle2/vss/...`
+   - `vehicle/vehicle3/vss/...`
+4. Query each Ditto Thing and confirm they are updated independently:
+
+```powershell
+$pair = "ditto:ditto"
+$encoded = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair))
+$headers = @{ Authorization = "Basic $encoded" }
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/2/things/org.eclipse.kuksa:vehicle1" `
+  -Headers $headers
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/2/things/org.eclipse.kuksa:vehicle2" `
+  -Headers $headers
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/2/things/org.eclipse.kuksa:vehicle3" `
+  -Headers $headers
+```
+
+Expected result:
+
+- all configured vehicles should exist as separate Ditto Things
+- each Thing should contain the same feature names
+- each Thing should update independently
+- vehicles with configured `signal_offsets` in [config/vehicles.json](config/vehicles.json) should show slightly different values from one another
+
+### Suggested Demo Settings
+
+For a fast manual demo:
+
+- set fault probabilities to around `0.3` to `0.5`
+- keep three vehicles in [config/vehicles.json](config/vehicles.json)
+- run the three pipeline scripts side by side
+- watch one Ditto Thing for fault recovery behavior and compare all three Ditto Things for multi-vehicle behavior
 
 ## Run
 

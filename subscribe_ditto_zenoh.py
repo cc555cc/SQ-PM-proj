@@ -33,7 +33,7 @@ from requests import HTTPError
 
 from connect_kuksa_zenoh import connect_to_zenoh
 
-ZENOH_SUBSCRIBE = os.getenv("ZENOH_SUBSCRIBE", "vehicle/vehicle1/vss")
+ZENOH_SUBSCRIBE = os.getenv("ZENOH_SUBSCRIBE", "vehicle")
 
 DITTO_URL = os.getenv("DITTO_URL", "http://localhost:8080")
 DITTO_USERNAME = os.getenv("DITTO_USERNAME", "ditto")
@@ -60,13 +60,38 @@ def build_feature_updates(payload):
 
     actual_payload = json.loads(raw_payload)
 
+    thing_id = actual_payload.get("thingId", DITTO_THING_ID)
+    vehicle_id = actual_payload.get("vehicleId", "vehicle1")
     feature_name = actual_payload.get("feature")
     value = actual_payload.get("value")
+    raw_value = actual_payload.get("rawValue")
+    quality = actual_payload.get("quality", "good")
+    faults = actual_payload.get("faults", [])
+    recovery_action = actual_payload.get("recoveryAction", "pass_through")
+    pipeline_safe = actual_payload.get("pipelineSafe", True)
+    source_timestamp = actual_payload.get("timestamp")
+    cycle = actual_payload.get("cycle")
+
+    if not feature_name:
+        raise ValueError(f"Zenoh payload is missing feature name: {actual_payload}")
 
     return {
-        feature_name: {
-            "properties": {
-                "value": value
+        "thing_id": thing_id,
+        "feature_updates": {
+            feature_name: {
+                "properties": {
+                    "vehicleId": vehicle_id,
+                    "value": value,
+                    "rawValue": raw_value,
+                    "quality": quality,
+                    "faults": faults,
+                    "recoveryAction": recovery_action,
+                    "pipelineSafe": pipeline_safe,
+                    "sourceTimestamp": source_timestamp,
+                    "receivedTimestamp": time.time(),
+                    "cycle": cycle,
+                    "isHealthy": quality == "good",
+                }
             }
         }
     }
@@ -74,9 +99,10 @@ def build_feature_updates(payload):
 
 def update_ditto(feature_updates):
     headers = {"Content-Type": "application/json"}
+    thing_id = feature_updates["thing_id"]
 
-    for feature_name, payload in feature_updates.items():
-        url = f"{DITTO_URL}/api/2/things/{DITTO_THING_ID}/features/{feature_name}"
+    for feature_name, payload in feature_updates["feature_updates"].items():
+        url = f"{DITTO_URL}/api/2/things/{thing_id}/features/{feature_name}"
 
         response = requests.put(
             url,

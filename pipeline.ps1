@@ -204,6 +204,30 @@ function Initialize-Ditto {
     }
   }
 }
+
+function Initialize-DittoFleet {
+    param(
+        [string]$VehiclesConfigPath = (Join-Path $projectRoot "config\vehicles.json"),
+        [string]$Username = "ditto",
+        [string]$Password = "ditto"
+    )
+
+    if (-not (Test-Path $VehiclesConfigPath)) {
+        Initialize-Ditto -ThingId "org.eclipse.kuksa:vehicle1" -Username $Username -Password $Password
+        return
+    }
+
+    $vehicles = Get-Content $VehiclesConfigPath -Raw | ConvertFrom-Json -AsHashtable
+
+    foreach ($vehicleId in $vehicles.Keys) {
+        $thingId = $vehicles[$vehicleId]["thing_id"]
+        if (-not $thingId) {
+            $thingId = "org.eclipse.kuksa:$vehicleId"
+        }
+
+        Initialize-Ditto -ThingId $thingId -Username $Username -Password $Password
+    }
+}
 '@
 
 $thingBody = @"
@@ -273,7 +297,7 @@ Start-Component `
 
 
 # IMPORTANT: initialize Ditto before subscriber/bridge starts
-Initialize-Ditto -ThingId "org.eclipse.kuksa:vehicle1"
+Initialize-DittoFleet
 
 # zovd
 Start-Component `

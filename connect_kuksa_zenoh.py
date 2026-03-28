@@ -15,6 +15,13 @@ import time
 import json
 from pathlib import Path
 
+from fault_management import (
+    build_quality_report,
+    load_fault_config,
+    repair_signal_value,
+)
+from vehicle_registry import apply_vehicle_profile, load_vehicle_registry
+
 KUKSA_IMPORT_ERROR = None
 ZENOH_IMPORT_ERROR = None
 
@@ -36,7 +43,7 @@ KUKSA_PORT = int(os.getenv("KUKSA_PORT", "55555"))
 
 #zenoh env
 ZENOH_PEER = os.getenv("ZENOH_PEER", "tcp/localhost:7447")
-ZENOH_PUBLISH = os.getenv("ZENOH_PUBLISH", "vehicle/vehicle1/vss")
+ZENOH_PUBLISH = os.getenv("ZENOH_PUBLISH", "vehicle")
 ZENOH_SUBSCRIBE = os.getenv("ZENOH_SUBSCRIBE", "vehicle/vehicle1/vss")
 
 # get configuration from environment variables
@@ -44,6 +51,8 @@ BASE_DIR = Path(__file__).resolve().parent
 SIGNAL_MAP_PATH = Path(
     os.getenv("SIGNAL_MAP_PATH", BASE_DIR / "config" / "signal_map.json") 
 ) #default to config/signal_map.json in the same directory as this script
+FAULT_CONFIG = load_fault_config()
+VEHICLE_REGISTRY = load_vehicle_registry()
 
 #read signal map from JSON file
 def read_signal_map():
@@ -112,21 +121,102 @@ def connect_to_zenoh():
     return zenoh.open(config)
 
 #build payload and ship to zenoh
-def build_and_ship_feature(zenoh_session, values, signal_map):
-    #loop through 'values'
-    for signal, value in values.items():
-        # Include both the original VSS path and mapped feature so the downstream Ditto bridge
-        # can update the right feature without re-deriving everything from the key alone.
-        payload = {
-            "path": signal,
-            "feature": signal_map[signal],
-            "value": value
-        }
-    
-        # Keep the key path aligned with the VSS hierarchy for easier filtering/subscription.
-        key = f"{ZENOH_PUBLISH}/{signal.replace('.','/')}"
-        zenoh_session.put(key, json.dumps(payload))
-        print(f"Published to Zenoh: {key} with payload: {payload}")
+def build_and_ship_feature(
+    zenoh_session,
+    vehicle_config,
+    signal,
+    raw_value,
+    signal_map,
+    quality_report,
+    cycle_index,
+    recovery_result,
+):
+    # Include both the original VSS path and mapped feature so the downstream Ditto bridge
+    # can update the right feature without re-deriving everything from the key alone.
+    payload = {
+        "vehicleId": vehicle_config["vehicle_id"],
+        "thingId": vehicle_config["thing_id"],
+        "path": signal,
+        "feature": signal_map[signal],
+        "value": recovery_result["effective_value"],
+        "rawValue": raw_value,
+        "quality": quality_report["quality"],
+        "faults": quality_report["faults"],
+        "recoveryAction": recovery_result["recovery_action"],
+        "pipelineSafe": recovery_result["pipeline_safe"],
+        "cycle": cycle_index,
+        "timestamp": time.time(),
+    }
+
+    # Keep the key path aligned with the VSS hierarchy for easier filtering/subscription.
+    zenoh_prefix = vehicle_config.get("zenoh_prefix", ZENOH_PUBLISH)
+    key = f"{zenoh_prefix}/{signal.replace('.','/')}"
+    zenoh_session.put(key, json.dumps(payload))
+    print(f"Published to Zenoh: {key} with payload: {payload}")
+
+
+def publish_quality_updates(
+    zenoh_session,
+    signal_map,
+    vehicle_registry,
+    current_values,
+    last_seen_cycles,
+    last_good_values,
+    cycle_index,
+):
+    for signal in signal_map.keys():
+        raw_value = current_values.get(signal)
+        quality_report = build_quality_report(
+            signal=signal,
+            value=raw_value,
+            last_seen_cycle=last_seen_cycles.get(signal),
+            current_cycle=cycle_index,
+            fault_config=FAULT_CONFIG,
+        )
+
+        if quality_report["quality"] == "good":
+            last_good_values.setdefault("base", {})[signal] = raw_value
+
+        for vehicle_id, vehicle_config in vehicle_registry.items():
+            last_good_by_vehicle = last_good_values.setdefault(vehicle_id, {})
+            profiled_raw_value = apply_vehicle_profile(signal, raw_value, vehicle_config)
+            profiled_last_good = last_good_by_vehicle.get(signal)
+            if profiled_last_good is None:
+                profiled_last_good = apply_vehicle_profile(
+                    signal,
+                    last_good_values.get("base", {}).get(signal),
+                    vehicle_config,
+                )
+
+            recovery_result = repair_signal_value(
+                signal=signal,
+                raw_value=profiled_raw_value,
+                quality_report=quality_report,
+                last_good_value=profiled_last_good,
+                fault_config=FAULT_CONFIG,
+            )
+
+            if recovery_result["effective_value"] is None:
+                print(
+                    f"Skipping unsafe update for {vehicle_id}/{signal}: "
+                    "no safe fallback is available."
+                )
+                continue
+
+            if quality_report["quality"] == "good":
+                last_good_by_vehicle[signal] = profiled_raw_value
+
+            if quality_report["quality"] != "good" or signal in current_values:
+                build_and_ship_feature(
+                    zenoh_session=zenoh_session,
+                    vehicle_config=vehicle_config,
+                    signal=signal,
+                    raw_value=profiled_raw_value,
+                    signal_map=signal_map,
+                    quality_report=quality_report,
+                    cycle_index=cycle_index,
+                    recovery_result=recovery_result,
+                )
 
 #main loop:
 #1. load map
@@ -137,6 +227,10 @@ def build_and_ship_feature(zenoh_session, values, signal_map):
 def main():
     signal_map = read_signal_map() #load the signal map from the JSON file
     subscribed_signals = list(signal_map.keys())
+    last_seen_cycles = {}
+    current_values = {}
+    last_good_values = {}
+    cycle_index = 0
 
     #confirm there are subscribed signal before listening to updates
     if not subscribed_signals:
@@ -158,8 +252,20 @@ def main():
 
                     #use the same kuksa API in ditto bridge.
                     for updates in client.subscribe_current_values(subscribed_signals):
+                        cycle_index += 1
                         values = extract_signal_values(updates)
-                        build_and_ship_feature(zenoh_session, values, signal_map)
+                        current_values.update(values)
+                        for signal in values.keys():
+                            last_seen_cycles[signal] = cycle_index
+                        publish_quality_updates(
+                            zenoh_session=zenoh_session,
+                            signal_map=signal_map,
+                            vehicle_registry=VEHICLE_REGISTRY,
+                            current_values=current_values,
+                            last_seen_cycles=last_seen_cycles,
+                            last_good_values=last_good_values,
+                            cycle_index=cycle_index,
+                        )
                 finally:
                     #close the zenoh session cleanly so reconnects do not leak handles.
                     zenoh_session.close()

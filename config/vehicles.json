@@ -1,0 +1,31 @@
+{
+  "vehicle1": {
+    "thing_id": "org.eclipse.kuksa:vehicle1",
+    "zenoh_prefix": "vehicle/vehicle1/vss",
+    "signal_offsets": {}
+  },
+  "vehicle2": {
+    "thing_id": "org.eclipse.kuksa:vehicle2",
+    "zenoh_prefix": "vehicle/vehicle2/vss",
+    "signal_offsets": {
+      "Vehicle.OBD.VehicleSpeed": 4,
+      "Vehicle.OBD.EngineSpeed": 120,
+      "Vehicle.OBD.FuelLevel": -3,
+      "Vehicle.OBD.BatteryVoltage": -0.1,
+      "Vehicle.OBD.ThrottlePosition": 2,
+      "Vehicle.OBD.CoolantTemperature": 1
+    }
+  },
+  "vehicle3": {
+    "thing_id": "org.eclipse.kuksa:vehicle3",
+    "zenoh_prefix": "vehicle/vehicle3/vss",
+    "signal_offsets": {
+      "Vehicle.OBD.VehicleSpeed": -6,
+      "Vehicle.OBD.EngineSpeed": -90,
+      "Vehicle.OBD.FuelLevel": 5,
+      "Vehicle.OBD.BatteryVoltage": 0.15,
+      "Vehicle.OBD.ThrottlePosition": -1,
+      "Vehicle.OBD.CoolantTemperature": 3
+    }
+  }
+}
