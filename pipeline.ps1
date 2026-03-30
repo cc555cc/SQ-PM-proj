@@ -5,9 +5,11 @@
 #4. initialize Eclipse Ditto policy + thing
 #5. activate venv
 #6. run openDut test script first
-#7. run the rest of the pipeline script if tests passed
+#7. launch the runtime bridge scripts if tests passed
+#8. verify end-to-end Kuksa to Ditto latency
 
 $projectRoot = $PSScriptRoot
+$homeDir = [Environment]::GetFolderPath("UserProfile")
 
 # =========================
 # stage 1: make sure Docker is running
@@ -66,6 +68,81 @@ function Start-Component {
         Invoke-Expression $Command
     } finally {
         Pop-Location
+    }
+}
+
+function Resolve-UserPath {
+    param(
+        [string]$PathValue
+    )
+
+    if ([string]::IsNullOrWhiteSpace($PathValue)) {
+        return $PathValue
+    }
+
+    if ($PathValue.StartsWith("~\")) {
+        return Join-Path $homeDir $PathValue.Substring(2)
+    }
+
+    if ($PathValue -eq "~") {
+        return $homeDir
+    }
+
+    return $PathValue
+}
+
+function Assert-DirectoryExists {
+    param(
+        [string]$Title,
+        [string]$PathValue
+    )
+
+    if (-not (Test-Path $PathValue -PathType Container)) {
+        throw "$Title directory was not found: $PathValue"
+    }
+}
+
+function Invoke-DockerCli {
+    param(
+        [string[]]$Arguments
+    )
+
+    $output = & docker @Arguments 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        return $null
+    }
+
+    return ($output | Out-String).Trim()
+}
+
+function Ensure-DockerContainerRunning {
+    param(
+        [string]$Title,
+        [string]$ContainerName,
+        [string[]]$RunArguments
+    )
+
+    Write-Host "Starting $Title..."
+
+    $existingState = Invoke-DockerCli -Arguments @("container", "inspect", "-f", "{{.State.Status}}", $ContainerName)
+
+    if ($existingState -eq "running") {
+        Write-Host "$Title container is already running."
+        return
+    }
+
+    if ($existingState) {
+        & docker start $ContainerName | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to start existing $Title container '$ContainerName'."
+        }
+        Write-Host "$Title container started."
+        return
+    }
+
+    & docker run @RunArguments | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to start $Title container '$ContainerName'."
     }
 }
 
@@ -273,27 +350,59 @@ function Initialize-DittoFleet {
     }
 }
 
+$dittoRoot = Resolve-UserPath "~\ditto"
+$kuksaRoot = Resolve-UserPath "~\kuksa-databroker"
+$zovdRoot = Resolve-UserPath "~\classic-diagnostic-adapter"
+
+Assert-DirectoryExists -Title "Ditto" -PathValue $dittoRoot
+Assert-DirectoryExists -Title "Kuksa Databroker" -PathValue $kuksaRoot
+Assert-DirectoryExists -Title "Classic Diagnostic Adapter" -PathValue $zovdRoot
+
+$dittoComposePath = Join-Path $dittoRoot "deployment\docker\docker-compose.yml"
+$zovdComposePath = Join-Path $zovdRoot "testcontainer\docker-compose.yml"
+
+if (-not (Test-Path $dittoComposePath -PathType Leaf)) {
+    throw "Ditto compose file was not found: $dittoComposePath"
+}
+
+if (-not (Test-Path $zovdComposePath -PathType Leaf)) {
+    throw "Classic Diagnostic Adapter compose file was not found: $zovdComposePath"
+}
+
 # =========================
 # Start infrastructure
 # =========================
 
 # kuksa
-Start-Component `
+Ensure-DockerContainerRunning `
     -Title "Kuksa" `
-    -Workdir "~\kuksa-databroker" `
-    -Command "docker run -d -p 55555:55555 -v `"${projectRoot}\vss\OBD.json:/OBD.json`" ghcr.io/eclipse-kuksa/kuksa-databroker:main --insecure --vss /OBD.json"
+    -ContainerName "kuksa-databroker" `
+    -RunArguments @(
+        "-d",
+        "--name", "kuksa-databroker",
+        "-p", "55555:55555",
+        "-v", "${projectRoot}\vss\OBD.json:/OBD.json",
+        "ghcr.io/eclipse-kuksa/kuksa-databroker:main",
+        "--insecure",
+        "--vss", "/OBD.json"
+    )
 
 # zenoh
-Start-Component `
+Ensure-DockerContainerRunning `
     -Title "Zenoh" `
-    -Workdir $projectRoot `
-    -Command "docker run --name zenoh-router -p 7447:7447 -d eclipse/zenoh:latest"
+    -ContainerName "zenoh-router" `
+    -RunArguments @(
+        "-d",
+        "--name", "zenoh-router",
+        "-p", "7447:7447",
+        "eclipse/zenoh:latest"
+    )
 
 
 # ditto
 Start-Component `
     -Title "Ditto" `
-    -Workdir "~\ditto" `
+    -Workdir $dittoRoot `
     -Command "docker compose -f .\deployment\docker\docker-compose.yml up -d"
 
 
@@ -303,7 +412,7 @@ Initialize-DittoFleet
 # zovd
 Start-Component `
     -Title "ZOVD" `
-    -Workdir "~\classic-diagnostic-adapter" `
+    -Workdir $zovdRoot `
     -Command "docker compose -f .\testcontainer\docker-compose.yml up -d --build"
 
 
@@ -386,3 +495,12 @@ Run-ProjectScript `
     -ProjectRoot $projectRoot `
     -ActivateScript $activateScript `
     -Command "python -m uvicorn diagnostics.sovd_api_server:app --host 0.0.0.0 --port 9001"
+
+# give the runtime scripts a moment to establish subscriptions before checking latency
+Start-Sleep -Seconds 5
+
+Write-Host "Running end-to-end latency measurement..."
+python .\testing\latency_measurement.py
+if ($LASTEXITCODE -ne 0) {
+    throw "Latency measurement failed after launching the pipeline runtime scripts."
+}
