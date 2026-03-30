@@ -175,6 +175,7 @@ def publish_quality_updates(
     signal_map,
     vehicle_registry,
     current_values,
+    updated_signals,
     last_seen_cycles,
     last_good_values,
     cycle_index,
@@ -221,7 +222,7 @@ def publish_quality_updates(
             if quality_report["quality"] == "good":
                 last_good_by_vehicle[signal] = profiled_raw_value
 
-            if quality_report["quality"] != "good" or signal in current_values:
+            if quality_report["quality"] != "good" or signal in updated_signals:
                 log_bridge_event(
                     vehicle_id=vehicle_id,
                     feature_name=signal_map[signal],
@@ -283,6 +284,7 @@ def main():
                             signal_map=signal_map,
                             vehicle_registry=VEHICLE_REGISTRY,
                             current_values=current_values,
+                            updated_signals=set(values.keys()),
                             last_seen_cycles=last_seen_cycles,
                             last_good_values=last_good_values,
                             cycle_index=cycle_index,
