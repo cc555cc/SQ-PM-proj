@@ -1,3 +1,6 @@
+#this script is used to test the fault mamagement logic by
+#simulating different fault scenarios, verifying them by checking the quality reports
+
 import unittest
 
 from fault_management import (
@@ -12,6 +15,7 @@ class FaultManagementTests(unittest.TestCase):
     def setUp(self):
         self.config = load_fault_config()
 
+    #test on missing data
     def test_missing_data_becomes_missing_quality(self):
         report = build_quality_report(
             signal="Vehicle.OBD.VehicleSpeed",
@@ -23,6 +27,7 @@ class FaultManagementTests(unittest.TestCase):
         self.assertEqual(report["quality"], "missing")
         self.assertIn("missing_data", report["faults"])
 
+    #test on out of range value
     def test_out_of_range_value_becomes_invalid_quality(self):
         report = build_quality_report(
             signal="Vehicle.OBD.FuelLevel",
@@ -34,6 +39,7 @@ class FaultManagementTests(unittest.TestCase):
         self.assertEqual(report["quality"], "invalid")
         self.assertIn("incorrect_value", report["faults"])
 
+    #test on disabled injector
     def test_disabled_injector_passthroughs_values(self):
         config = load_fault_config()
         config["enabled"] = False
@@ -44,6 +50,7 @@ class FaultManagementTests(unittest.TestCase):
         self.assertEqual(updates["Vehicle.OBD.VehicleSpeed"], 100)
         self.assertEqual(faults, [])
 
+    #test on 100% faulty cycle probability
     def test_non_faulty_cycle_passthroughs_values(self):
         config = load_fault_config()
         config["faulty_cycle_probability"] = 0.0
@@ -54,6 +61,7 @@ class FaultManagementTests(unittest.TestCase):
         self.assertEqual(updates["Vehicle.OBD.VehicleSpeed"], 100)
         self.assertEqual(faults, [])
 
+    #test on 100% faulty cycle probability with out of range value
     def test_invalid_value_reuses_last_good_value(self):
         quality_report = {
             "quality": "invalid",
@@ -73,6 +81,7 @@ class FaultManagementTests(unittest.TestCase):
         )
         self.assertTrue(repaired["pipeline_safe"])
 
+    #test on missing value with no history
     def test_missing_value_uses_default_when_no_history_exists(self):
         quality_report = {
             "quality": "missing",

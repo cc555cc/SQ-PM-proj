@@ -1,3 +1,6 @@
+#this script is used to test connection to kuksa zenoh bridge
+#on port 7447 by sending a test value and checking for the expected output
+
 import unittest
 from unittest.mock import patch
 
