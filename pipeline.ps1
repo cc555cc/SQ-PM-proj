@@ -448,9 +448,12 @@ function Run-ProjectScript {
 
     Start-Process powershell -ArgumentList @(
         "-NoExit",
+        "-ExecutionPolicy", "Bypass",
         "-Command",
         "cd '$ProjectRoot'; `$Host.UI.RawUI.WindowTitle = '$Title'; & '$ActivateScript'; $Command"
     )
+
+    Write-Host "$Title launched in a new PowerShell window."
 }
 
 #wait for all service to run, then start the test
@@ -463,37 +466,37 @@ Wait-For-Component -Name "openDut" -Url "http://localhost:8085"
 #run test with openDUT first and stop the pipeline if it fails
 Set-Location $projectRoot
 & $activateScriptPath
+Write-Host "Running unit tests from .\testing\test_*.py..."
+python .\testing\run_visible_tests.py
+if ($LASTEXITCODE -ne 0) {
+    throw "Unit tests failed. Stopping pipeline before the integration checks."
+}
+
+Write-Host "Running OpenDuT integration checks..."
 python .\testing\open_dut_test_cases.py
 if ($LASTEXITCODE -ne 0) {
     throw "openDut integration test failed. Stopping pipeline before launching project scripts."
 }
 
-#generate OBD data to Kuksa
-Run-ProjectScript `
-    -Title "OBD Publisher" `
-    -ProjectRoot $projectRoot `
-    -ActivateScript $activateScript `
-    -Command "python .\send_obd_data_to_kuksa.py"
-
 #connect Kuksa to Zenoh
 Run-ProjectScript `
     -Title "Send Data to Zenoh" `
     -ProjectRoot $projectRoot `
-    -ActivateScript $activateScript `
+    -ActivateScript $activateScriptPath `
     -Command "python .\connect_kuksa_zenoh.py"
 
 #subscribe Ditto to Zenoh
 Run-ProjectScript `
     -Title "Get Feature Update from Zenoh" `
     -ProjectRoot $projectRoot `
-    -ActivateScript $activateScript `
+    -ActivateScript $activateScriptPath `
     -Command "python .\subscribe_ditto_zenoh.py"
 
 #start SOVD API service
 Run-ProjectScript `
     -Title "SOVD API" `
     -ProjectRoot $projectRoot `
-    -ActivateScript $activateScript `
+    -ActivateScript $activateScriptPath `
     -Command "python -m uvicorn diagnostics.sovd_api_server:app --host 0.0.0.0 --port 9001"
 
 # give the runtime scripts a moment to establish subscriptions before checking latency
@@ -504,3 +507,11 @@ python .\testing\latency_measurement.py
 if ($LASTEXITCODE -ne 0) {
     throw "Latency measurement failed after launching the pipeline runtime scripts."
 }
+
+#generate OBD data to Kuksa after latency checks so the continuous publisher
+#does not interfere with the dedicated latency probe values
+Run-ProjectScript `
+    -Title "OBD Publisher" `
+    -ProjectRoot $projectRoot `
+    -ActivateScript $activateScriptPath `
+    -Command "python .\send_obd_data_to_kuksa.py"
